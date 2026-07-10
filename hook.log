@@ -1,0 +1,226 @@
+INFO:     Started server process [476524]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:5678 (Press CTRL+C to quit)
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [476524]
+INFO:     Started server process [476543]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:5678 (Press CTRL+C to quit)
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [476543]
+INFO:     Started server process [476749]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:5678 (Press CTRL+C to quit)
+INFO:     147.92.149.167:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.167:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.167:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     2001:b400:e4a6:6c52:c995:ebcb:eb53:4768:0 - "GET /webhook/scorepage HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     59.126.54.209:0 - "GET /webhook/scorepage HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.150.196:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.150.196:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.150.196:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.150.196:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.150.196:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [476749]
+INFO:     Started server process [525754]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:5678 (Press CTRL+C to quit)
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/fukushi/hook/lib/python3.12/site-packages/uvicorn/protocols/http/h11_impl.py", line 416, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/fukushi/hook/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/fukushi/hook/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/fastapi/routing.py", line 2683, in app
+    await route.handle(scope, receive, send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/fastapi/routing.py", line 1266, in handle
+    await super().handle(scope, receive, send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/fastapi/routing.py", line 150, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/fastapi/routing.py", line 136, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/fukushi/hook/lib/python3.12/site-packages/fastapi/routing.py", line 690, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/fukushi/hook/lib/python3.12/site-packages/fastapi/routing.py", line 344, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/fukushi/hook/main.py", line 49, in api
+    await handle_message(MessageEvent.from_dict(event_dict))
+  File "/home/fukushi/hook/main.py", line 88, in handle_message
+    echo_text =json.dumps(event,ensure_ascii=False,indent=3)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/__init__.py", line 238, in dumps
+    **kw).encode(obj)
+          ^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/encoder.py", line 202, in encode
+    chunks = list(chunks)
+             ^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/encoder.py", line 439, in _iterencode
+    o = _default(o)
+        ^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/encoder.py", line 180, in default
+    raise TypeError(f'Object of type {o.__class__.__name__} '
+TypeError: Object of type MessageEvent is not JSON serializable
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [525754]
+INFO:     Started server process [526125]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:5678 (Press CTRL+C to quit)
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.167:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [526125]
+INFO:     Started server process [526983]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:5678 (Press CTRL+C to quit)
+INFO:     147.92.149.167:0 - "POST /webhook/line HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/home/fukushi/hook/lib/python3.12/site-packages/uvicorn/protocols/http/h11_impl.py", line 416, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/fukushi/hook/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/fukushi/hook/lib/python3.12/site-packages/fastapi/applications.py", line 1163, in __call__
+    await super().__call__(scope, receive, send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/fastapi/routing.py", line 2683, in app
+    await route.handle(scope, receive, send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/fastapi/routing.py", line 1266, in handle
+    await super().handle(scope, receive, send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/fastapi/routing.py", line 150, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/home/fukushi/hook/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/home/fukushi/hook/lib/python3.12/site-packages/fastapi/routing.py", line 136, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/home/fukushi/hook/lib/python3.12/site-packages/fastapi/routing.py", line 690, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/fukushi/hook/lib/python3.12/site-packages/fastapi/routing.py", line 344, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/fukushi/hook/main.py", line 49, in api
+    await handle_message(MessageEvent.from_dict(event_dict))
+  File "/home/fukushi/hook/main.py", line 68, in handle_message
+    source = event.get('source', {})
+             ^^^^^^^^^
+AttributeError: 'MessageEvent' object has no attribute 'get'
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [526983]
+INFO:     Started server process [527219]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:5678 (Press CTRL+C to quit)
+INFO:     147.92.149.167:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [527219]
+INFO:     Started server process [527905]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:5678 (Press CTRL+C to quit)
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [527905]
+INFO:     Started server process [528145]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:5678 (Press CTRL+C to quit)
+INFO:     147.92.149.167:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.168:0 - "POST /webhook/line HTTP/1.1" 200 OK
+INFO:     147.92.149.167:0 - "POST /webhook/line HTTP/1.1" 200 OK
