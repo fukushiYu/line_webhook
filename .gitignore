@@ -1,0 +1,14 @@
+# Python virtual environment
+bin/
+include/
+lib/
+lib64/
+pyvenv.cfg
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Runtime files
+hook.log
+.hook.pid
