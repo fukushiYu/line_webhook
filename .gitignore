@@ -12,3 +12,6 @@ __pycache__/
 # Runtime files
 hook.log
 .hook.pid
+
+# Config
+settings.yaml
