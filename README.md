@@ -23,7 +23,11 @@
 
 ```
 hook/
-├── main.py                # FastAPI 應用主程式
+├── main.py                # FastAPI 應用入口（路由 + 啟動）
+├── config.py              # 設定檔載入與常數
+├── line_utils.py          # LINE 簽章驗證 + API 客戶端
+├── handlers.py            # 各類訊息處理器 (text/image/audio/postback)
+├── gemini.py              # Gemini API 呼叫封裝 (OCR / 轉寫)
 ├── english_essay.py       # 英文作文檢測工具
 ├── menu.sh                # 服務管理腳本（啟動/停止/查看 Log）
 ├── settings.yaml          # 設定檔（金鑰、Token、Flex 模板）
@@ -36,6 +40,24 @@ hook/
 ├── hook.log               # 服務日誌
 └── .hook.pid              # 服務 PID 檔案
 ```
+
+---
+
+## 模組架構
+
+```
+main.py             路由層         HTTP 請求分派、簽章驗證
+  ├── config.py ───── 設定層       settings.yaml 讀取、常數集中管理
+  ├── line_utils.py ─ 工具層       LINE API 客戶端、HMAC 驗證
+  ├── handlers.py ─── 業務層       文字/圖片/音訊/Postback 處理邏輯
+  └── gemini.py ───── AI 層        Google Gemini API 呼叫 (OCR / 轉寫)
+```
+
+- **config.py** — 一切設定的單一來源，其他模組從這裡讀取常數
+- **line_utils.py** — 與 LINE Platform 的通訊基礎（簽章驗證、API Client）
+- **gemini.py** — 對 Gemini API 的唯二呼叫（`ocr_image` / `transcribe_audio`），隱藏 API 細節
+- **handlers.py** — 各類事件的處理邏輯，依賴 config / line_utils / gemini
+- **main.py** — 最小化 glue code，只定義路由與事件分派
 
 ---
 
@@ -116,11 +138,10 @@ uvicorn main:app --port 9000
 
 ```
 使用者上傳圖片
-    → LINE Webhook POST /webhook/line (type=image)
-    → handle_image_message()
-    → 下載圖片原始內容，儲存至 images/
-    → Base64 編碼
-    → 呼叫 Gemini API (generateContent) 含圖片資料
+    → POST /webhook/line (type=image)          [main.py]
+    → handle_image_message()                     [handlers.py]
+    → 從 LINE 下載原始圖片，儲存至 images/
+    → ocr_image(filepath)                        [gemini.py]
     → 回傳辨識文字至 LINE
 ```
 
@@ -128,12 +149,10 @@ uvicorn main:app --port 9000
 
 ```
 使用者傳送語音訊息
-    → LINE Webhook POST /webhook/line (type=audio)
-    → handle_audio_message()
-    → 下載音訊原始內容，儲存至 audios/
-    → 根據 Content-Type 決定副檔名 (.m4a, .aac, .mp3 等)
-    → Base64 編碼
-    → 呼叫 Gemini API (generateContent) 含音訊資料
+    → POST /webhook/line (type=audio)           [main.py]
+    → handle_audio_message()                     [handlers.py]
+    → 從 LINE 下載音訊，依 Content-Type 決定副檔名
+    → transcribe_audio(filepath, mime)           [gemini.py]
     → 回傳轉寫文字至 LINE
 ```
 
@@ -141,17 +160,7 @@ uvicorn main:app --port 9000
 
 ## 簽章驗證
 
-所有來自 LINE 的 Webhook 請求都會經過 `verify_signature()` 驗證：
-
-```python
-def verify_signature(channel_secret, body, signature):
-    expected = base64.b64encode(
-        hmac.new(channel_secret, body, hashlib.sha256).digest()
-    ).decode()
-    return hmac.compare_digest(signature, expected)
-```
-
-驗證失敗會回傳 `400 Invalid signature`。
+所有來自 LINE 的 Webhook 請求都會經過 `line_utils.verify_signature()` 驗證（HMAC-SHA256），驗證失敗回傳 `400 Invalid signature`。
 
 ---
 
