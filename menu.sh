@@ -3,13 +3,14 @@
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_FILE="$HOOK_DIR/hook.log"
 PID_FILE="$HOOK_DIR/.hook.pid"
+HOOK_PORT=9000
 
 start_service() {
     if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
         echo "服務已在運行中 (PID: $(cat "$PID_FILE"))"
         return
     fi
-    nohup "$HOOK_DIR/bin/uvicorn" main:app --port 5678 >> "$LOG_FILE" 2>&1 &
+    nohup "$HOOK_DIR/bin/uvicorn" main:app --port $HOOK_PORT >> "$LOG_FILE" 2>&1 &
     echo $! > "$PID_FILE"
     echo "服務已啟動 (PID: $!)"
 }
