@@ -2,7 +2,7 @@
 bin/
 include/
 lib/
-lib64/
+lib64
 pyvenv.cfg
 
 # Python cache
@@ -13,5 +13,14 @@ __pycache__/
 hook.log
 .hook.pid
 
-# Config
+# Runtime data
+images/
+audios/
+output/
+
+# Config / secrets
 settings.yaml
+github_key
+
+# Archived files (not part of the project)
+archive/

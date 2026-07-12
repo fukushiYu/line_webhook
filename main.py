@@ -1,11 +1,7 @@
-import json
-import asyncio
-
-from fastapi import FastAPI, Request, HTTPException, Header
-from fastapi.responses import FileResponse
-
+import json,asyncio,os
+from fastapi import FastAPI, Request, HTTPException, Header, Query
+from fastapi.responses import FileResponse, HTMLResponse
 from linebot.v3.webhooks import MessageEvent, PostbackEvent
-
 from config import CHANNEL_SECRET
 from line_utils import verify_signature
 from handlers import handle_message, handle_image_message, handle_audio_message, handle_postback
@@ -37,5 +33,15 @@ async def webhook(request: Request, x_line_signature: str = Header(None)):
 
 
 @app.get("/webhook/scorepage")
-async def score_page():
+async def score_page(id: str = Query(None)):
+    if id:
+        filepath = os.path.join("output", f"{id}.html")
+        if os.path.exists(filepath):
+            return FileResponse(filepath)
+        return HTMLResponse("<h1>Not Found</h1>", status_code=404)
     return FileResponse("static/scorepage.html")
+
+
+@app.get("/webhook/style.css")
+async def serve_css():
+    return FileResponse("style.css", media_type="text/css")

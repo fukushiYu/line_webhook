@@ -20,9 +20,11 @@ from config import (
     ADMIN,
     ADMIN_PREFIX,
     LIFF_URI,
+    ENDPOINT_URL,
     RICH_MENU_A_ID,
 )
-from gemini import ocr_image, transcribe_audio
+from gemini import ocr_image, transcribe_audio, score_essay, md_to_html
+from english_essay import is_english_essay
 
 
 async def handle_message(event: MessageEvent):
@@ -32,43 +34,28 @@ async def handle_message(event: MessageEvent):
     group_id = getattr(source, "group_id", "*")
     is_group = source.type == "group"
 
+    if is_group:
+        if user_message.startswith(ADMIN_PREFIX) and user_id == ADMIN:
+            lower_text = user_message[len(ADMIN_PREFIX):].strip().lower()
+        else:
+             return
+    else:
+        lower_text = user_message.strip().lower()
+
     async with AsyncApiClient(configuration) as api_client:
         line_bot_api = AsyncMessagingApi(api_client)
-
         async def _reply(reply_token, message):
-            await line_bot_api.reply_message(
-                ReplyMessageRequest(reply_token=reply_token, messages=[message])
-            )
-
-        if is_group:
-            if user_message.startswith(ADMIN_PREFIX) and user_id == ADMIN:
-                lower_text = user_message[len(ADMIN_PREFIX):].strip().lower()
-            else:
-                return
-        else:
-            lower_text = user_message.strip().lower()
-
+            await line_bot_api.reply_message(ReplyMessageRequest(reply_token=reply_token, messages=[message]))
         if lower_text == "grade":
             flex_dict = FLEX_GRADE
             flex_dict["body"]["contents"][1]["action"]["uri"] = LIFF_URI
-            await _reply(
-                event.reply_token,
-                FlexMessage(alt_text="評分", contents=FlexContainer.from_dict(flex_dict)),
-            )
+            await _reply(event.reply_token,FlexMessage(alt_text="評分", contents=FlexContainer.from_dict(flex_dict)),)
         elif lower_text == "welcome":
-            await _reply(
-                event.reply_token,
-                FlexMessage(alt_text="歡迎", contents=FlexContainer.from_dict(FLEX_WELCOME)),
-            )
+            await _reply(event.reply_token,FlexMessage(alt_text="歡迎", contents=FlexContainer.from_dict(FLEX_WELCOME)),)
         elif lower_text == "upload":
-            await _reply(
-                event.reply_token,
-                FlexMessage(alt_text="上傳", contents=FlexContainer.from_dict(FLEX_UPLOAD)),
-            )
+            await _reply( event.reply_token,FlexMessage(alt_text="上傳", contents=FlexContainer.from_dict(FLEX_UPLOAD)),)
         elif lower_text in ("menu", "選單"):
-            await line_bot_api.link_rich_menu_id_to_user(
-                user_id=user_id, rich_menu_id=RICH_MENU_A_ID
-            )
+            await line_bot_api.link_rich_menu_id_to_user(user_id=user_id, rich_menu_id=RICH_MENU_A_ID)
             await _reply(event.reply_token, TextMessage(text="特殊圖文選單已為您開啟！"))
         else:
             echo = f"「{user_message}」\n（User ID 紀錄為：{user_id}）"
@@ -77,11 +64,16 @@ async def handle_message(event: MessageEvent):
 
 
 async def handle_image_message(event: MessageEvent):
+    source = event.source
+    user_id = getattr(source, "user_id", "*")
+    group_id = getattr(source, "group_id", "*")
+    is_group = source.type == "group"
     message_id = event.message.id
+    if is_group and user_id != ADMIN:
+        return
     async with AsyncApiClient(configuration) as api_client:
         blob_api = AsyncMessagingApiBlob(api_client)
         content = await blob_api.get_message_content(message_id)
-
         filename = f"{uuid.uuid4()}.jpg"
         os.makedirs("images", exist_ok=True)
         filepath = os.path.join("images", filename)
@@ -90,14 +82,42 @@ async def handle_image_message(event: MessageEvent):
 
         text = await ocr_image(filepath)
 
-        line_bot_api = AsyncMessagingApi(api_client)
-        await line_bot_api.reply_message(
-            ReplyMessageRequest(
+        ok, reason, cleaned = is_english_essay(text)
+        if not ok:
+            line_bot_api = AsyncMessagingApi(api_client)
+            await line_bot_api.reply_message(ReplyMessageRequest(
                 reply_token=event.reply_token,
-                messages=[TextMessage(text=text)],
-            )
-        )
+                messages=[TextMessage(text=f"這不是一篇英文作文：{reason}")],
+            ))
+            return
 
+        scored = await score_essay(cleaned)
+
+        basename = os.path.splitext(filename)[0]
+        os.makedirs("output", exist_ok=True)
+        md_path = os.path.join("output", f"{basename}.md")
+        with open(md_path, "w", encoding="utf-8") as f:
+            f.write(scored)
+
+        html = await md_to_html(scored)
+
+        css_path = os.path.join(os.path.dirname(__file__), "style.css")
+        if os.path.exists(css_path):
+            with open(css_path, "r", encoding="utf-8") as f:
+                css_content = f.read()
+            html = html.replace("</head>", f"<style>\n{css_content}\n</style>\n</head>", 1)
+
+        html_path = os.path.join("output", f"{basename}.html")
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(html)
+
+        line_bot_api = AsyncMessagingApi(api_client)
+        flex_dict = FLEX_GRADE
+        flex_dict["body"]["contents"][1]["action"]["uri"] = f"{ENDPOINT_URL}?id={basename}"
+        await line_bot_api.reply_message(ReplyMessageRequest(
+            reply_token=event.reply_token,
+            messages=[FlexMessage(alt_text="評分結果", contents=FlexContainer.from_dict(flex_dict))],
+        ))
 
 AUDIO_EXT_MAP = {
     "audio/mp4": ".m4a",
@@ -111,7 +131,13 @@ AUDIO_EXT_MAP = {
 
 
 async def handle_audio_message(event: MessageEvent):
+    source = event.source
+    user_id = getattr(source, "user_id", "*")
+    group_id = getattr(source, "group_id", "*")
+    is_group = source.type == "group"
     message_id = event.message.id
+    if is_group and user_id != ADMIN:
+        return
     async with AsyncApiClient(configuration) as api_client:
         blob_api = AsyncMessagingApiBlob(api_client)
         resp = await blob_api.get_message_content_with_http_info(message_id)
@@ -119,23 +145,14 @@ async def handle_audio_message(event: MessageEvent):
         content_type = resp.headers.get("Content-Type", "audio/mp4")
         mime = content_type.split(";")[0].strip()
         ext = AUDIO_EXT_MAP.get(mime, ".m4a")
-
         filename = f"{uuid.uuid4()}{ext}"
         os.makedirs("audios", exist_ok=True)
         filepath = os.path.join("audios", filename)
         with open(filepath, "wb") as f:
             f.write(raw_data)
-
         text = await transcribe_audio(filepath, mime)
-
         line_bot_api = AsyncMessagingApi(api_client)
-        await line_bot_api.reply_message(
-            ReplyMessageRequest(
-                reply_token=event.reply_token,
-                messages=[TextMessage(text=text)],
-            )
-        )
-
+        await line_bot_api.reply_message(ReplyMessageRequest(reply_token=event.reply_token,messages=[TextMessage(text=text)],))
 
 async def handle_postback(event: PostbackEvent):
     pass

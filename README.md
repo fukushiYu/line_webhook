@@ -1,6 +1,6 @@
 # Blossom Academy LINE Bot — Hook 服務
 
-基於 **FastAPI** 的 LINE Messaging API 伺服器，提供圖片 OCR、語音轉寫、Flex 選單等功能，搭配 Google Gemini API 作為 AI 引擎。
+基於 **FastAPI** 的 LINE Messaging API 伺服器，提供圖片 OCR、語音轉寫、英文作文評分等功能，搭配 Google Gemini API 作為 AI 引擎。
 
 ---
 
@@ -9,13 +9,14 @@
 | 功能 | 說明 |
 |------|------|
 | **文字指令** | 回應 `grade` / `welcome` / `upload` / `menu` 等關鍵字，顯示對應的 Flex Message |
-| **圖片 OCR** | 上傳圖片 → 透過 Gemini API 辨識圖片中的英文作文文字 |
+| **圖片 OCR + 評分** | 上傳圖片 → 辨識英文作文 → Gemini 根據 `elementary_prompt` 評分 → 輸出 `.md` + `.html` 至 `output/` |
 | **語音轉寫** | 上傳語音訊息 → 透過 Gemini API 轉寫為文字 |
+| **英文作文檢測** | `is_english_essay()` 判斷 OCR 結果是否為英文作文，非英文作文不回傳評分 |
+| **Markdown → HTML** | 評分結果自動轉換為卡片式 HTML，CSS 內嵌，支援手機 LIFF 顯示 |
+| **LIFF 評分頁** | `GET /webhook/scorepage?id=<uuid>` 回傳對應的 HTML 評分報告 |
 | **群組管理** | 僅管理員可使用 `@小英` 前綴觸發指令 |
 | **Rich Menu** | 輸入 `menu` 即可連結特殊圖文選單 |
-| **LIFF 評分頁** | `GET /webhook/scorepage` 回傳靜態評分頁面 |
 | **簽章驗證** | 所有 Webhook 請求皆經過 HMAC-SHA256 簽章驗證 |
-| **英文作文檢測** | `english_essay.py` 提供 `is_english_essay()` 判斷是否為英文作文 |
 
 ---
 
@@ -27,18 +28,21 @@ hook/
 ├── config.py              # 設定檔載入與常數
 ├── line_utils.py          # LINE 簽章驗證 + API 客戶端
 ├── handlers.py            # 各類訊息處理器 (text/image/audio/postback)
-├── gemini.py              # Gemini API 呼叫封裝 (OCR / 轉寫)
+├── gemini.py              # Gemini API 呼叫封裝 (OCR / 轉寫 / 評分 / MD→HTML)
 ├── english_essay.py       # 英文作文檢測工具
+├── style.css              # 卡片式 HTML 樣式（內嵌至輸出 HTML）
 ├── menu.sh                # 服務管理腳本（啟動/停止/查看 Log）
-├── settings.yaml          # 設定檔（金鑰、Token、Flex 模板）
+├── settings.yaml          # 設定檔（金鑰、Token、Flex 模板、提示詞）
 ├── requirements.txt       # Python 依賴
 ├── .gitignore
 ├── static/
-│   └── scorepage.html     # LIFF 評分頁面
-├── images/                # 接收的圖片暫存
-├── audios/                # 接收的音訊暫存
-├── hook.log               # 服務日誌
-└── .hook.pid              # 服務 PID 檔案
+│   └── scorepage.html     # LIFF 預設頁面（無 id 參數時顯示）
+├── images/                # 接收的圖片暫存（gitignored）
+├── audios/                # 接收的音訊暫存（gitignored）
+├── output/                # 評分結果 .md/.html（gitignored）
+├── archive/               # 舊版或未使用檔案（gitignored）
+├── hook.log               # 服務日誌（gitignored）
+└── .hook.pid              # 服務 PID 檔案（gitignored）
 ```
 
 ---
@@ -50,14 +54,34 @@ main.py             路由層         HTTP 請求分派、簽章驗證
   ├── config.py ───── 設定層       settings.yaml 讀取、常數集中管理
   ├── line_utils.py ─ 工具層       LINE API 客戶端、HMAC 驗證
   ├── handlers.py ─── 業務層       文字/圖片/音訊/Postback 處理邏輯
-  └── gemini.py ───── AI 層        Google Gemini API 呼叫 (OCR / 轉寫)
+  ├── gemini.py ───── AI 層        Gemini API 呼叫 (OCR / 轉寫 / 評分 / MD→HTML)
+  └── english_essay.py            英文作文檢測（回傳清洗後文字）
 ```
 
 - **config.py** — 一切設定的單一來源，其他模組從這裡讀取常數
 - **line_utils.py** — 與 LINE Platform 的通訊基礎（簽章驗證、API Client）
-- **gemini.py** — 對 Gemini API 的唯二呼叫（`ocr_image` / `transcribe_audio`），隱藏 API 細節
+- **gemini.py** — Gemini API 呼叫封裝：`ocr_image`、`transcribe_audio`、`score_essay`、`md_to_html`
 - **handlers.py** — 各類事件的處理邏輯，依賴 config / line_utils / gemini
+- **english_essay.py** — 判斷字數、句數、大寫比例，回傳 `(bool, reason, cleaned_text)`
 - **main.py** — 最小化 glue code，只定義路由與事件分派
+
+---
+
+## 圖片處理流程
+
+```
+使用者上傳圖片
+    → POST /webhook/line (type=image)          [main.py]
+    → handle_image_message()                     [handlers.py]
+    → 從 LINE 下載原始圖片，儲存至 images/
+    → ocr_image(filepath)                        [gemini.py]
+    → is_english_essay(text)                     [english_essay.py]
+    → score_essay(cleaned_text)                  [gemini.py]  → 評分 MD
+    → md_to_html(scored_md)                      [gemini.py]  → HTML
+    → 內嵌 style.css 至 HTML
+    → 存檔至 output/{uuid}.md / .html
+    → 回傳 Flex Message，按鈕指向 endpoint_url?id={uuid}
+```
 
 ---
 
@@ -84,13 +108,16 @@ channel_access_token: "你的 LINE Channel Access Token"
 
 gemini_api_key:
   - "你的 Gemini API Key (可多組輪換)"
-llm_model: "gemini-2.0-flash-exp"
-gemini_prompt: "將圖片中的英文作文識別出來，不要做任何的修改"
-gemini_audio_prompt: "將語音內容轉寫為文字，不要做任何的修改"
+llm_model: "gemini-3.1-flash-lite"
+gemini_ocr_prompt: "將圖片中的英文作文識別出來..."
+gemini_audio_prompt: "將語音內容轉寫為文字..."
+elementary_prompt: "全民英檢初級寫作批改提示詞..."
+MD_TO_HTML_PROMPT: "Markdown 轉 HTML 提示詞..."
 
 admin: "LINE User ID 管理員"
 admin_prefix: "@小英"
 liff_uri: "https://liff.line.me/你的LIFF_ID"
+endpoint_url: "https://你的域名/webhook/scorepage"
 
 flex_welcome:   # Flex Message JSON (bubble)
 flex_upload:    # Flex Message JSON (bubble)
@@ -117,7 +144,8 @@ uvicorn main:app --port 9000
 | 端點 | 方法 | 說明 |
 |------|------|------|
 | `/webhook/line` | `POST` | LINE Messaging API Webhook（需附 `X-Line-Signature`） |
-| `/webhook/scorepage` | `GET` | 回傳 LIFF 評分靜態頁面 |
+| `/webhook/scorepage` | `GET` | 回傳靜態評分頁（無 `?id=` 時）或對應的 HTML 評分報告 |
+| `/webhook/style.css` | `GET` | 外部 CSS（已內嵌，此路由為備援） |
 
 ---
 
@@ -131,54 +159,6 @@ uvicorn main:app --port 9000
 | `menu` / `選單` | 私訊 / 群組 | 連結 Rich Menu 至該使用者 |
 | 其他文字 | 私訊 | Echo 回覆使用者 ID 與群組 ID |
 | `@小英 <指令>` | 群組（限管理員） | 管理員專用前綴 |
-
----
-
-## 圖片 OCR 流程
-
-```
-使用者上傳圖片
-    → POST /webhook/line (type=image)          [main.py]
-    → handle_image_message()                     [handlers.py]
-    → 從 LINE 下載原始圖片，儲存至 images/
-    → ocr_image(filepath)                        [gemini.py]
-    → 回傳辨識文字至 LINE
-```
-
-## 語音轉寫流程
-
-```
-使用者傳送語音訊息
-    → POST /webhook/line (type=audio)           [main.py]
-    → handle_audio_message()                     [handlers.py]
-    → 從 LINE 下載音訊，依 Content-Type 決定副檔名
-    → transcribe_audio(filepath, mime)           [gemini.py]
-    → 回傳轉寫文字至 LINE
-```
-
----
-
-## 簽章驗證
-
-所有來自 LINE 的 Webhook 請求都會經過 `line_utils.verify_signature()` 驗證（HMAC-SHA256），驗證失敗回傳 `400 Invalid signature`。
-
----
-
-## 英文作文檢測 (`english_essay.py`)
-
-```python
-from english_essay import is_english_essay
-
-is_english_essay(text)  # → True / False
-```
-
-判斷規則：
-
-1. 排除包含中日韓泰文字的內容
-2. 只允許英文字母、標點、數字、空白
-3. 字數至少 30 詞
-4. 至少 2 句以上
-5. 超過 50% 的句子開頭為大寫
 
 ---
 
