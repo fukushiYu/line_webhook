@@ -71,16 +71,14 @@ main.py             路由層         HTTP 請求分派、簽章驗證
 
 ```
 使用者上傳圖片
-    → POST /webhook/line (type=image)          [main.py]
+    → POST /webhook/line (type=image)           [main.py]
     → handle_image_message()                     [handlers.py]
     → 從 LINE 下載原始圖片，儲存至 images/
     → ocr_image(filepath)                        [gemini.py]
     → is_english_essay(text)                     [english_essay.py]
-    → score_essay(cleaned_text)                  [gemini.py]  → 評分 MD
-    → md_to_html(scored_md)                      [gemini.py]  → HTML
-    → 內嵌 style.css 至 HTML
-    → 存檔至 output/{uuid}.md / .html
-    → 回傳 Flex Message，按鈕指向 endpoint_url?id={uuid}
+    → score_essay(cleaned, basename)             [gemini.py]  內部存 output/{id}.md
+    → md_to_html(basename)                       [gemini.py]  內部存 output/{id}.html
+    → 回傳 Flex Message，按鈕指向 endpoint_url?id={basename}
 ```
 
 ---

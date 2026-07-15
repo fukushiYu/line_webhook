@@ -74,50 +74,24 @@ async def handle_image_message(event: MessageEvent):
     async with AsyncApiClient(configuration) as api_client:
         blob_api = AsyncMessagingApiBlob(api_client)
         content = await blob_api.get_message_content(message_id)
-        filename = f"{uuid.uuid4()}.jpg"
+        basename = f"{uuid.uuid4()}"
+        filename = basename + ".jpg"
         os.makedirs("images", exist_ok=True)
         filepath = os.path.join("images", filename)
         with open(filepath, "wb") as f:
             f.write(content)
-
         text = await ocr_image(filepath)
-
         ok, reason, cleaned = is_english_essay(text)
         if not ok:
             line_bot_api = AsyncMessagingApi(api_client)
-            await line_bot_api.reply_message(ReplyMessageRequest(
-                reply_token=event.reply_token,
-                messages=[TextMessage(text=f"這不是一篇英文作文：{reason}")],
-            ))
+            await line_bot_api.reply_message(ReplyMessageRequest(reply_token=event.reply_token,messages=[TextMessage(text=f"這不是一篇英文作文：{reason}")],))
             return
-
-        scored = await score_essay(cleaned)
-
-        basename = os.path.splitext(filename)[0]
-        os.makedirs("output", exist_ok=True)
-        md_path = os.path.join("output", f"{basename}.md")
-        with open(md_path, "w", encoding="utf-8") as f:
-            f.write(scored)
-
-        html = await md_to_html(scored)
-
-        css_path = os.path.join(os.path.dirname(__file__), "style.css")
-        if os.path.exists(css_path):
-            with open(css_path, "r", encoding="utf-8") as f:
-                css_content = f.read()
-            html = html.replace("</head>", f"<style>\n{css_content}\n</style>\n</head>", 1)
-
-        html_path = os.path.join("output", f"{basename}.html")
-        with open(html_path, "w", encoding="utf-8") as f:
-            f.write(html)
-
+        await score_essay(cleaned,basename) # create markdown
+        await md_to_html(basename)          # markdown to html
         line_bot_api = AsyncMessagingApi(api_client)
         flex_dict = FLEX_GRADE
         flex_dict["body"]["contents"][1]["action"]["uri"] = f"{ENDPOINT_URL}?id={basename}"
-        await line_bot_api.reply_message(ReplyMessageRequest(
-            reply_token=event.reply_token,
-            messages=[FlexMessage(alt_text="評分結果", contents=FlexContainer.from_dict(flex_dict))],
-        ))
+        await line_bot_api.reply_message(ReplyMessageRequest(reply_token=event.reply_token,messages=[FlexMessage(alt_text="評分結果", contents=FlexContainer.from_dict(flex_dict))],))
 
 AUDIO_EXT_MAP = {
     "audio/mp4": ".m4a",
