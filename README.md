@@ -143,7 +143,7 @@ uvicorn main:app --port 9000
 |------|------|------|
 | `/webhook/line` | `POST` | LINE Messaging API Webhook（需附 `X-Line-Signature`） |
 | `/webhook/scorepage` | `GET` | 回傳靜態評分頁（無 `?id=` 時）或對應的 HTML 評分報告 |
-| `/webhook/style.css` | `GET` | 外部 CSS（已內嵌，此路由為備援） |
+| `/webhook/style.css` | `GET` | 外部 CSS |
 
 ---
 
