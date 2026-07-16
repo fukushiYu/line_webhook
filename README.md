@@ -1,6 +1,30 @@
 # Blossom Academy LINE Bot — Hook 服務
 
-基於 **FastAPI** 的 LINE Messaging API 伺服器，提供圖片 OCR、語音轉寫、英文作文評分等功能，搭配 Google Gemini API 作為 AI 引擎。
+本專案是一個基於 **FastAPI** 的 LINE Messaging API 伺服器，旨在協助學生進行英文作文的練習與評分。整合了 **Google Gemini API** 作為 AI 引擎，提供 OCR 辨識、語音轉寫、自動化作文評分及報告產生。
+
+---
+
+## 核心組件詳解
+
+### 1. `main.py` (應用程式入口與路由分派)
+`main.py` 是整個應用的入口點，核心功能為：
+- **LINE Webhook 接收:** 定義 `/webhook/line` 端點，負責接收 LINE Platform 發送的 Webhook 事件。
+- **安全性驗證:** 使用 `line_utils.py` 進行 HMAC-SHA256 簽章驗證，確保請求確實來自 LINE。
+- **事件分派:** 解析 JSON 請求體，根據事件類型（`message`, `postback`）將請求非同步派發至 `handlers.py` 中對應的處理函數。
+- **靜態資源服務:** 提供 API 用於存取生成的評分報告 (`/webhook/scorepage`) 與網頁樣式 (`/webhook/style.css`)。
+
+### 2. Python 模組架構說明
+
+本專案將複雜邏輯拆分為以下模組：
+
+| 模組名稱 | 功能說明 |
+| :--- | :--- |
+| **`main.py`** | **路由層**: HTTP 請求進入點，負責 Webhook 簽章驗證與請求分派。 |
+| **`handlers.py`** | **業務邏輯層**: 處理不同類型的訊息事件（文字、圖片、音訊），串接各工具模組。 |
+| **`gemini.py`** | **AI 服務層**: 封裝所有與 Google Gemini API 互動的邏輯（OCR、轉寫、評分、Markdown 轉 HTML）。 |
+| **`english_essay.py`** | **檢測層**: 提供 `is_english_essay()` 函式，對文字內容進行格式檢測（字數、句數、開頭大寫比例）。 |
+| **`config.py`** | **設定層**: 讀取 `settings.yaml`，集中管理所有全域參數、API 金鑰與提示詞模板。 |
+| **`line_utils.py`** | **工具層**: 提供 LINE Messaging API 的認證配置 (`Configuration`) 及工具函式（簽章驗證）。 |
 
 ---
 
