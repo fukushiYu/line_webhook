@@ -9,6 +9,7 @@ CHANNEL_ACCESS_TOKEN = conf["channel_access_token"]
 FLEX_WELCOME = conf["flex_welcome"]
 FLEX_UPLOAD = conf["flex_upload"]
 FLEX_GRADE = conf["flex_grade"]
+FLEX_WAIT = conf["flex_wait"]
 
 ADMIN = conf["admin"]
 ADMIN_PREFIX = conf["admin_prefix"]

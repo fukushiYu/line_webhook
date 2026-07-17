@@ -1,12 +1,27 @@
-import json,asyncio,os
+import json,asyncio,os,logging
 from fastapi import FastAPI, Request, HTTPException, Header, Query
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from linebot.v3.webhooks import MessageEvent, PostbackEvent
 from config import CHANNEL_SECRET
 from line_utils import verify_signature
 from handlers import handle_message, handle_image_message, handle_audio_message, handle_postback
 
+LOG_FORMAT = "%(asctime)s %(levelname)s %(message)s"
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
+for _name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+    _logger = logging.getLogger(_name)
+    _logger.handlers.clear()
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT))
+    _logger.addHandler(_handler)
+    _logger.setLevel(logging.INFO)
+
 app = FastAPI()
+
+
+@app.get("/favicon.ico")
+async def favicon():
+    return Response(status_code=204)
 
 
 @app.post("/webhook/line")
