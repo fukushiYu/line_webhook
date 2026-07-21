@@ -11,6 +11,7 @@
 - **LINE Webhook 接收:** 定義 `/webhook/line` 端點，負責接收 LINE Platform 發送的 Webhook 事件。
 - **安全性驗證:** 使用 `line_utils.py` 進行 HMAC-SHA256 簽章驗證，確保請求確實來自 LINE。
 - **事件分派:** 解析 JSON 請求體，根據事件類型（`message`, `postback`）將請求非同步派發至 `handlers.py` 中對應的處理函數。
+- **日誌設定:** 統一格式化 uvicorn 日誌（時間戳 + 層級 + 訊息），覆蓋 `uvicorn` / `uvicorn.error` / `uvicorn.access` 三個 logger。
 - **靜態資源服務:** 提供 API 用於存取生成的評分報告 (`/webhook/scorepage`) 與網頁樣式 (`/webhook/style.css`)。
 
 ### 2. Python 模組架構說明
@@ -97,19 +98,22 @@ main.py             路由層         HTTP 請求分派、簽章驗證
 使用者上傳圖片
     → POST /webhook/line (type=image)           [main.py]
     → handle_image_message()                     [handlers.py]
+    → 重疊上傳檢查（asyncio.Lock）               [handlers.py]
+    → 每日用量檢查（每日 10 次上限）             [handlers.py]
+    → 立即回覆「請稍候」Flex Message             [handlers.py]
     → 從 LINE 下載原始圖片，儲存至 images/
     → ocr_image(filepath)                        [gemini.py]
     → is_english_essay(text)                     [english_essay.py]
     → score_essay(cleaned, basename)             [gemini.py]  內部存 output/{id}.md
     → md_to_html(basename)                       [gemini.py]  內部存 output/{id}.html
-    → 回傳 Flex Message，按鈕指向 endpoint_url?id={basename}
+    → push_message 回傳評分結果（不佔用 reply_token）
 ```
 
 ### 使用限制
 
 | 限制 | 說明 |
 |------|------|
-| **每日 10 次** | 每位使用者每天最多上傳 10 張圖片進行 OCR 評分，達到上限後會收到「您今天已達每日使用上限，請明天再來。」的提示 |
+| **每日 10 次** | 每位使用者每天最多上傳 10 張圖片進行 OCR 評分（以 Asia/Taipei 時區計算），達到上限後會收到「您今天已達每日使用上限，請明天再來。」的提示 |
 | **不可重疊上傳** | 若使用者已有圖片正在處理中（OCR + 評分），系統不接受再次上傳，會回覆「您有圖片正在處理中，請稍候再上傳。」，需等待當前處理完成後才可繼續使用 |
 
 ---
@@ -196,9 +200,12 @@ uvicorn main:app --port 9000
 | 選項 | 功能 |
 |------|------|
 | 1) 啟動服務 | 以 `nohup` 背景執行 uvicorn，記錄 PID |
-| 2) 停止服務 | 依 PID 結束 uvicorn 程序 |
-| 3) 查看 Log | 顯示 `hook.log` 最後 50 行 |
-| 4) 離開 | 退出選單 |
+| 2) 停止服務 | 依 PID 結束 uvicorn 程序（等待 5 秒，必要時強制終止） |
+| 3) 重啟服務 | 依序執行停止 → 啟動 |
+| 4) 查看 Log | 顯示 `hook.log` 最後 50 行 |
+| 5) 即時 Log | `tail -f` 即時追蹤 log（Ctrl+C 退出） |
+| 6) 清除 Log | 清空 `hook.log` 內容 |
+| 7) 離開 | 退出選單 |
 
 ---
 
