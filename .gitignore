@@ -19,7 +19,7 @@ audios/
 output/
 
 # Config / secrets
-settings.yaml
+settings.local.yaml
 github_key
 
 # Archived files (not part of the project)

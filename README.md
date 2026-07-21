@@ -24,7 +24,7 @@
 | **`handlers.py`** | **業務邏輯層**: 處理不同類型的訊息事件（文字、圖片、音訊），串接各工具模組。 |
 | **`gemini.py`** | **AI 服務層**: 封裝所有與 Google Gemini API 互動的邏輯（OCR、轉寫、評分、Markdown 轉 HTML）。 |
 | **`english_essay.py`** | **檢測層**: 提供 `is_english_essay()` 函式，對文字內容進行格式檢測（字數、句數、開頭大寫比例）。 |
-| **`config.py`** | **設定層**: 讀取 `settings.yaml`，集中管理所有全域參數、API 金鑰與提示詞模板。頻道專屬設定（Secret、Token、管理員 ID）匯出為 `LINE_CONFIGS` 陣列，不再以個別變數匯出。 |
+| **`config.py`** | **設定層**: 讀取 `settings.yaml` 及 `settings.local.yaml` 並合併，集中管理所有全域參數、API 金鑰與提示詞模板。頻道專屬設定匯出為 `LINE_CONFIGS` 陣列。 |
 | **`line_utils.py`** | **工具層**: 提供 LINE Messaging API 的認證配置 (`Configuration`) 及工具函式（簽章驗證）。 |
 
 ---
@@ -57,7 +57,8 @@ hook/
 ├── english_essay.py       # 英文作文檢測工具
 ├── style.css              # 卡片式 HTML 樣式（內嵌至輸出 HTML）
 ├── menu.sh                # 服務管理腳本（啟動/停止/查看 Log）
-├── settings.yaml          # 設定檔（金鑰、Token、Flex 模板、提示詞）
+├── settings.yaml          # 公開設定（Flex 模板、提示詞、非機密參數，可上傳 GitHub）
+├── settings.local.yaml    # 機密設定（API Key、Token、Secret，已 .gitignore）
 ├── requirements.txt       # Python 依賴
 ├── .gitignore
 ├── static/
@@ -133,35 +134,39 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. 設定 `settings.yaml`
+### 3. 設定檔（二階段配置）
+
+本專案將設定拆分為公開與機密兩層：
+
+| 檔案 | 用途 | Git 追蹤 |
+|------|------|----------|
+| `settings.yaml` | 公開設定：Flex 模板、提示詞、模型名稱、非機密頻道參數 | ✅ 可上傳 GitHub |
+| `settings.local.yaml` | 機密設定：API Key、Token、Channel Secret | ❌ .gitignore |
+
+**第一步：編輯 `settings.yaml`（公開）**
+
+此檔案已包含完整的公開設定（Flex 模板、提示詞等），無需修改即可使用。機密欄位已寫明 `請在 settings.local.yaml 中設定`。
+
+**第二步：建立 `settings.local.yaml`（機密）**
+
+從現有設定複製機密值：
 
 ```yaml
 gemini_api_key:
   - "你的 Gemini API Key (可多組輪換)"
-llm_model: "gemini-3.1-flash-lite"
-gemini_ocr_prompt: "將圖片中的英文作文識別出來..."
-gemini_audio_prompt: "將語音內容轉寫為文字..."
-elementary_prompt: "全民英檢初級寫作批改提示詞..."
-MD_TO_HTML_PROMPT: "Markdown 轉 HTML 提示詞..."
 
 line:
   - channel_secret: "LINE Channel Secret"
     channel_access_token: "LINE Channel Access Token"
     admin: "管理員 LINE User ID"
-    admin_prefix: "@小英"
-    liff_uri: "https://liff.line.me/你的LIFF_ID"
-    endpoint_url: "https://你的域名/webhook/scorepage"
     rich_menu_id: "richmenu-xxxxxxxxxxxxxx"
-  # 可新增第二個頻道...
+  # 第二個頻道（若有）
   # - channel_secret: "..."
-
-flex_welcome:   # Flex Message JSON (bubble)
-flex_upload:    # Flex Message JSON (bubble)
-flex_grade:     # Flex Message JSON (bubble)
-flex_wait:      # Flex Message JSON (bubble)
 ```
 
-`line` 為陣列，每個元素代表一個 LINE 頻道的設定。Webhook 路由 `/webhook/line/{channel_idx}` 透過索引選擇對應頻道。
+`config.py` 啟動時會自動載入 `settings.yaml`，再以 `settings.local.yaml` 覆蓋機密欄位。
+
+> 提示：初次部署可複製 `settings.local.yaml` 範本後填入真實值即可。`settings.yaml` 的機密欄位僅為說明字串，不會影響執行。
 
 ### 4. 啟動服務
 
