@@ -8,9 +8,9 @@
 
 ### 1. `main.py` (應用程式入口與路由分派)
 `main.py` 是整個應用的入口點，核心功能為：
-- **LINE Webhook 接收:** 定義 `/webhook/line` 端點，負責接收 LINE Platform 發送的 Webhook 事件。
+- **LINE Webhook 接收:** 定義 `/webhook/line/{channel_idx}` 端點（支援多頻道），負責接收 LINE Platform 發送的 Webhook 事件，`channel_idx` 對應 `settings.yaml` 中 `line` 陣列的索引。
 - **安全性驗證:** 使用 `line_utils.py` 進行 HMAC-SHA256 簽章驗證，確保請求確實來自 LINE。
-- **事件分派:** 解析 JSON 請求體，根據事件類型（`message`, `postback`）將請求非同步派發至 `handlers.py` 中對應的處理函數。
+- **事件分派:** 解析 JSON 請求體，根據事件類型（`message`, `postback`）將請求非同步派發至 `handlers.py` 中對應的處理函數，並傳入該頻道的 `channel_config` dict。
 - **日誌設定:** 統一格式化 uvicorn 日誌（時間戳 + 層級 + 訊息），覆蓋 `uvicorn` / `uvicorn.error` / `uvicorn.access` 三個 logger。
 - **靜態資源服務:** 提供 API 用於存取生成的評分報告 (`/webhook/scorepage`) 與網頁樣式 (`/webhook/style.css`)。
 
@@ -24,7 +24,7 @@
 | **`handlers.py`** | **業務邏輯層**: 處理不同類型的訊息事件（文字、圖片、音訊），串接各工具模組。 |
 | **`gemini.py`** | **AI 服務層**: 封裝所有與 Google Gemini API 互動的邏輯（OCR、轉寫、評分、Markdown 轉 HTML）。 |
 | **`english_essay.py`** | **檢測層**: 提供 `is_english_essay()` 函式，對文字內容進行格式檢測（字數、句數、開頭大寫比例）。 |
-| **`config.py`** | **設定層**: 讀取 `settings.yaml`，集中管理所有全域參數、API 金鑰與提示詞模板。 |
+| **`config.py`** | **設定層**: 讀取 `settings.yaml`，集中管理所有全域參數、API 金鑰與提示詞模板。頻道專屬設定（Secret、Token、管理員 ID）匯出為 `LINE_CONFIGS` 陣列，不再以個別變數匯出。 |
 | **`line_utils.py`** | **工具層**: 提供 LINE Messaging API 的認證配置 (`Configuration`) 及工具函式（簽章驗證）。 |
 
 ---
@@ -83,12 +83,12 @@ main.py             路由層         HTTP 請求分派、簽章驗證
   └── english_essay.py            英文作文檢測（回傳清洗後文字）
 ```
 
-- **config.py** — 一切設定的單一來源，其他模組從這裡讀取常數
-- **line_utils.py** — 與 LINE Platform 的通訊基礎（簽章驗證、API Client）
+- **config.py** — 一切設定的單一來源。匯出 `LINE_CONFIGS` 陣列（頻道專屬設定）、Flex Message 模板、Gemini 金鑰與提示詞
+- **line_utils.py** — 與 LINE Platform 的通訊基礎（簽章驗證、API Client），無全域 `Configuration` 實例，改由呼叫端傳入 `channel_config`
 - **gemini.py** — Gemini API 呼叫封裝：`ocr_image`、`transcribe_audio`、`score_essay`、`md_to_html`
-- **handlers.py** — 各類事件的處理邏輯，依賴 config / line_utils / gemini
+- **handlers.py** — 各類事件的處理邏輯，所有函式接收 `channel_config: dict` 參數以支援多頻道
 - **english_essay.py** — 判斷字數、句數、大寫比例，回傳 `(bool, reason, cleaned_text)`
-- **main.py** — 最小化 glue code，只定義路由與事件分派
+- **main.py** — 最小化 glue code，路由 `/webhook/line/{channel_idx}` 將對應頻道設定傳入 handler
 
 ---
 
@@ -136,9 +136,6 @@ pip install -r requirements.txt
 ### 3. 設定 `settings.yaml`
 
 ```yaml
-channel_secret: "你的 LINE Channel Secret"
-channel_access_token: "你的 LINE Channel Access Token"
-
 gemini_api_key:
   - "你的 Gemini API Key (可多組輪換)"
 llm_model: "gemini-3.1-flash-lite"
@@ -147,15 +144,24 @@ gemini_audio_prompt: "將語音內容轉寫為文字..."
 elementary_prompt: "全民英檢初級寫作批改提示詞..."
 MD_TO_HTML_PROMPT: "Markdown 轉 HTML 提示詞..."
 
-admin: "LINE User ID 管理員"
-admin_prefix: "@小英"
-liff_uri: "https://liff.line.me/你的LIFF_ID"
-endpoint_url: "https://你的域名/webhook/scorepage"
+line:
+  - channel_secret: "LINE Channel Secret"
+    channel_access_token: "LINE Channel Access Token"
+    admin: "管理員 LINE User ID"
+    admin_prefix: "@小英"
+    liff_uri: "https://liff.line.me/你的LIFF_ID"
+    endpoint_url: "https://你的域名/webhook/scorepage"
+    rich_menu_id: "richmenu-xxxxxxxxxxxxxx"
+  # 可新增第二個頻道...
+  # - channel_secret: "..."
 
 flex_welcome:   # Flex Message JSON (bubble)
 flex_upload:    # Flex Message JSON (bubble)
 flex_grade:     # Flex Message JSON (bubble)
+flex_wait:      # Flex Message JSON (bubble)
 ```
+
+`line` 為陣列，每個元素代表一個 LINE 頻道的設定。Webhook 路由 `/webhook/line/{channel_idx}` 透過索引選擇對應頻道。
 
 ### 4. 啟動服務
 
@@ -176,7 +182,7 @@ uvicorn main:app --port 9000
 
 | 端點 | 方法 | 說明 |
 |------|------|------|
-| `/webhook/line` | `POST` | LINE Messaging API Webhook（需附 `X-Line-Signature`） |
+| `/webhook/line/{channel_idx}` | `POST` | LINE Messaging API Webhook，`channel_idx` 對應 `settings.yaml` 中 `line` 陣列索引（需附 `X-Line-Signature`） |
 | `/webhook/scorepage` | `GET` | 回傳靜態評分頁（無 `?id=` 時）或對應的 HTML 評分報告 |
 | `/webhook/style.css` | `GET` | 外部 CSS |
 
