@@ -2,6 +2,7 @@ import yaml
 import os
 import re
 
+# ── 支援 YAML 中 !include path 語法，將外部文字檔內容載入為字串 ──
 _INCLUDE_RE = re.compile(r"^!include\s+(.+)$")
 
 def _resolve(value):
@@ -11,9 +12,11 @@ def _resolve(value):
             return f.read()
     return value
 
+# ── 載入公開設定 ──
 with open("settings.yaml", "r", encoding="utf-8") as f:
     conf = yaml.safe_load(f)
 
+# ── 以機密設定（settings.local.yaml）覆蓋 API Key、Token 等 ──
 local_path = "settings.local.yaml"
 if os.path.exists(local_path):
     with open(local_path, "r", encoding="utf-8") as f:
@@ -25,6 +28,8 @@ if os.path.exists(local_path):
             for i, entry in enumerate(local_conf["line"]):
                 if i < len(conf["line"]):
                     conf["line"][i].update(entry)
+
+# ── 以下為所有模組共用的設定常數 ──
 
 LINE_CONFIGS = conf["line"]
 

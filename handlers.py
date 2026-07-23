@@ -26,18 +26,23 @@ from config import (
 from gemini import ocr_image, transcribe_audio, score_essay, md_to_html
 from english_essay import is_english_essay
 
+# ── 時區與每日上限 ──
 TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 DAILY_IMAGE_LIMIT = 10
 
+# ── 避免重疊處理：正在處理圖片的 user_id 集合 ──
 _processing_users: set[str] = set()
 _state_lock = asyncio.Lock()
 
+# ── 圖片上傳每日用量紀錄（key: user_id, value: {date, count}） ──
 _user_daily_usage: dict[str, dict] = {}
 _usage_lock = asyncio.Lock()
 
+# ── 根據 channel_config 建立 LINE Messaging API 客戶端 ──
 def _make_api(channel_config: dict) -> AsyncMessagingApi:
     return AsyncMessagingApi(AsyncApiClient(Configuration(access_token=channel_config["channel_access_token"])))
 
+# ── 處理文字訊息（指令判斷） ──
 async def handle_message(event: MessageEvent, channel_config: dict):
     user_message = event.message.text.strip()
     source = event.source
@@ -48,6 +53,7 @@ async def handle_message(event: MessageEvent, channel_config: dict):
     admin = channel_config["admin"]
     admin_prefix = channel_config["admin_prefix"]
 
+    # 群組中只有管理員加前綴才能觸發指令
     if is_group:
         if user_message.startswith(admin_prefix) and user_id == admin:
             lower_text = user_message[len(admin_prefix):].strip().lower()
@@ -59,6 +65,7 @@ async def handle_message(event: MessageEvent, channel_config: dict):
     line_bot_api = _make_api(channel_config)
     async def _reply(reply_token, message):
         await line_bot_api.reply_message(ReplyMessageRequest(reply_token=reply_token, messages=[message]))
+    # ── 指令分派 ──
     if lower_text == "grade":
         flex_dict = FLEX_GRADE
         flex_dict["body"]["contents"][1]["action"]["uri"] = channel_config["liff_uri"]
@@ -76,6 +83,7 @@ async def handle_message(event: MessageEvent, channel_config: dict):
         await _reply(event.reply_token, TextMessage(text=echo))
 
 
+# ── 處理圖片上傳：OCR → 英文檢測 → 評分 → 轉 HTML → 推播結果 ──
 async def handle_image_message(event: MessageEvent, channel_config: dict):
     source = event.source
     user_id = getattr(source, "user_id", "*")
@@ -83,6 +91,7 @@ async def handle_image_message(event: MessageEvent, channel_config: dict):
     is_group = source.type == "group"
     message_id = event.message.id
 
+    # 群組中只允許管理員上傳
     if is_group and user_id != channel_config["admin"]:
         return
 
@@ -169,6 +178,7 @@ async def handle_image_message(event: MessageEvent, channel_config: dict):
         async with _state_lock:
             _processing_users.discard(user_id)
 
+# ── LINE 音訊 Content-Type 對應副檔名 ──
 AUDIO_EXT_MAP = {
     "audio/mp4": ".m4a",
     "audio/aac": ".aac",
@@ -180,6 +190,7 @@ AUDIO_EXT_MAP = {
 }
 
 
+# ── 處理語音訊息：下載 → Gemini 轉寫 → 回覆文字 ──
 async def handle_audio_message(event: MessageEvent, channel_config: dict):
     source = event.source
     user_id = getattr(source, "user_id", "*")
@@ -205,5 +216,6 @@ async def handle_audio_message(event: MessageEvent, channel_config: dict):
     await line_bot_api.reply_message(ReplyMessageRequest(reply_token=event.reply_token,messages=[TextMessage(text=text)],))
     await api_client.close()
 
+# ── Postback 事件（暫未實作） ──
 async def handle_postback(event: PostbackEvent, channel_config: dict):
     pass
