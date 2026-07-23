@@ -24,7 +24,7 @@
 | **`handlers.py`** | **業務邏輯層**: 處理不同類型的訊息事件（文字、圖片、音訊），串接各工具模組。 |
 | **`gemini.py`** | **AI 服務層**: 封裝所有與 Google Gemini API 互動的邏輯（OCR、轉寫、評分、Markdown 轉 HTML）。 |
 | **`english_essay.py`** | **檢測層**: 提供 `is_english_essay()` 函式，對文字內容進行格式檢測（字數、句數、開頭大寫比例）。 |
-| **`config.py`** | **設定層**: 讀取 `settings.yaml` 及 `settings.local.yaml` 並合併，集中管理所有全域參數、API 金鑰與提示詞模板。頻道專屬設定匯出為 `LINE_CONFIGS` 陣列。 |
+| **`config.py`** | **設定層**: 讀取 `settings.yaml` 及 `settings.local.yaml` 並合併，集中管理所有全域參數、API 金鑰與提示詞模板。支援 `!include path` 語法，可將提示詞模板抽離為獨立檔案。頻道專屬設定匯出為 `LINE_CONFIGS` 陣列。 |
 | **`line_utils.py`** | **工具層**: 提供 LINE Messaging API 的認證配置 (`Configuration`) 及工具函式（簽章驗證）。 |
 
 ---
@@ -58,6 +58,9 @@ hook/
 ├── style.css              # 卡片式 HTML 樣式（內嵌至輸出 HTML）
 ├── menu.sh                # 服務管理腳本（啟動/停止/查看 Log）
 ├── settings.yaml          # 公開設定（Flex 模板、提示詞、非機密參數，可上傳 GitHub）
+├── prompt/                # 提示詞模板（從 settings.yaml 抽離，以 !include 載入）
+│   ├── elementary_prompt.txt
+│   └── MD_TO_HTML_PROMPT.txt
 ├── settings.local.yaml    # 機密設定（API Key、Token、Secret，已 .gitignore）
 ├── requirements.txt       # Python 依賴
 ├── .gitignore

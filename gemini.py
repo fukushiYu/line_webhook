@@ -38,7 +38,11 @@ async def transcribe_audio(filepath: str, mime_type: str) -> str:
 async def _call_gemini_text(prompt: str, text: str, file_id: str) -> str:
     api_key = random.choice(GEMINI_API_KEYS)
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{LLM_MODEL}:generateContent?key={api_key}"
-    payload = {"contents": [{"parts": [{"text": prompt},{"text": f"學生的文章：\n{text}"},]}]}
+    payload = {
+        "contents": [
+            {"parts": [
+                {"text": prompt},
+                {"text": f"學生的文章：\n{text}"},]}]}
     async with aiohttp.ClientSession() as session:
         async with session.post(url, json=payload) as resp:
             result = await resp.json()
