@@ -22,16 +22,15 @@
 ```
 main.py                        ← FastAPI 伺服器，接收 LINE Webhook
   │
-  ├── config.py                ← 讀取 settings.yaml，提供所有設定值
-  │     └── settings.yaml      （不是 .py，但為設定來源）
+  ├── config.py                ← 讀取 settings.yaml + settings.local.yaml
+  │     ├── settings.yaml      （公開設定：Flex 模板、提示詞）
+  │     └── settings.local.yaml（機密設定：API Key、Token，已 .gitignore）
   │
-  ├── line_utils.py            ← LINE SDK 設定 + 簽章驗證
-  │     └── config.py
+  ├── line_utils.py            ← LINE SDK 簽章驗證 + API 客戶端工廠
   │
   └── handlers.py              ← 事件處理（文字/圖片/音訊/Postback）
         │
         ├── config.py          ← 取得 Flex 模板、管理員 ID 等
-        ├── line_utils.py      ← 取得 AsyncApiClient 用的 configuration
         ├── gemini.py          ← OCR / 評分 / 轉 HTML
         │     └── config.py
         └── english_essay.py   ← 驗證是否為英文作文
@@ -43,20 +42,21 @@ main.py                        ← FastAPI 伺服器，接收 LINE Webhook
 
 ## 2. `main.py`
 
-**角色**：FastAPI 應用程式入口，對外暴露兩個端點。
+**角色**：FastAPI 應用程式入口，對外暴露三個端點。
 
-### 2.1 `POST /webhook/line` — LINE Webhook
+### 2.1 `POST /webhook/line/{channel_idx}` — LINE Webhook（支援多頻道）
 
 ```python
-@app.post("/webhook/line")
-async def webhook(request: Request, x_line_signature: str = Header(None)):
+@app.post("/webhook/line/{channel_idx}")
+async def webhook(channel_idx: int, request: Request, x_line_signature: str = Header(None)):
 ```
 
 流程：
 
-1. **簽章驗證**：從 Header 取出 `x-line-signature`，呼叫 `line_utils.verify_signature()` 確保請求來自 LINE
-2. **解析事件**：將 request body 解析為 JSON，逐個處理 `events[]`
-3. **依事件類型分派**：
+1. **頻道驗證**：`channel_idx` 對應 `settings.yaml` 中 `line` 陣列的索引，必須在範圍內
+2. **簽章驗證**：從 Header 取出 `x-line-signature`，使用該頻道的 `channel_secret` 呼叫 `line_utils.verify_signature()` 確保請求來自 LINE
+3. **解析事件**：將 request body 解析為 JSON，逐個處理 `events[]`
+4. **依事件類型分派**：
 
 | 事件類型 | 處理方式 | 說明 |
 |---|---|---|
@@ -90,84 +90,96 @@ async def serve_css():
 
 ## 3. `config.py`
 
-**角色**：全域設定管理中心，啟動時一次性從 `settings.yaml` 讀入所有設定。
+**角色**：全域設定管理中心，啟動時一次性從 YAML 讀入所有設定，並以機密設定覆蓋。
 
 ```python
-import yaml
-
+# 載入公開設定
 with open("settings.yaml", "r", encoding="utf-8") as f:
     conf = yaml.safe_load(f)
+
+# 以機密設定覆蓋
+if os.path.exists("settings.local.yaml"):
+    local_conf = yaml.safe_load(f)
+    conf["gemini_api_key"] = local_conf["gemini_api_key"]
+    for i, entry in enumerate(local_conf["line"]):
+        conf["line"][i].update(entry)
 ```
 
-**產出的設定變數**：
+### 3.1 `!include` 語法
+
+支援在 YAML 中以 `!include path` 引用外部文字檔作為字串值，方便將大型提示詞抽離為獨立檔案：
+
+```yaml
+elementary_prompt: '!include prompt/elementary_prompt.txt'
+```
+
+透過 `_resolve()` 函數在載入時自動取代為檔案內容。
+
+### 3.2 產出的設定常數
 
 | 變數 | 用途 |
 |---|---|
-| `CHANNEL_SECRET` | LINE Channel Secret（簽章驗證用） |
-| `CHANNEL_ACCESS_TOKEN` | LINE Channel Access Token（API 呼叫用） |
-| `FLEX_WELCOME` / `FLEX_UPLOAD` / `FLEX_GRADE` | Flex Message 模板（dict） |
-| `ADMIN` | 管理員 LINE User ID |
-| `ADMIN_PREFIX` | 管理員指令前綴（例如 `!`） |
-| `LIFF_URI` | LIFF 網址 |
-| `ENDPOINT_URL` | 評分結果頁面的公開網址 |
-| `GEMINI_API_KEYS` | Gemini API Key 陣列（可多個輪流用） |
+| `LINE_CONFIGS` | LINE 頻道設定陣列（每個元素包含 `channel_secret`, `channel_access_token`, `admin`, `admin_prefix`, `liff_uri`, `endpoint_url`, `rich_menu_id`） |
+| `FLEX_WELCOME` / `FLEX_UPLOAD` / `FLEX_GRADE` / `FLEX_WAIT` | Flex Message 模板（dict） |
+| `GEMINI_API_KEYS` | Gemini API Key 陣列（可多個輪流使用） |
 | `LLM_MODEL` | Gemini 模型名稱 |
 | `GEMINI_OCR_PROMPT` | OCR 用的 System Prompt |
 | `GEMINI_AUDIO_PROMPT` | 語音辨識用的 System Prompt |
-| `ELEMENTARY_PROMPT` | 評分作文用的 System Prompt |
-| `MD_TO_HTML_PROMPT` | Markdown 轉 HTML 用的 System Prompt |
+| `ELEMENTARY_PROMPT` | 評分作文用的 System Prompt（透過 `_resolve` 載入） |
+| `MD_TO_HTML_PROMPT` | Markdown 轉 HTML 用的 System Prompt（透過 `_resolve` 載入） |
 
-> **設計模式**：所有重要的字串和模板集中在 YAML，修改行為不需要改程式碼，改 YAML 就好。
+> **設計模式**：所有重要的字串和模板集中在 YAML，修改行為不需要改程式碼，改 YAML 就好。機密與公開設定分離，避免 Token 外洩。
 
 ---
 
 ## 4. `line_utils.py`
 
-**角色**：LINE SDK 的初始化與共用工具。
-
-```python
-configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
-```
-
-- 建立全域的 `Configuration` 物件（帶 Access Token）
-- `handlers.py` 和 `main.py` 透過 `from line_utils import configuration` 引用同一個 instance
+**角色**：LINE SDK 的共用工具函式，無全域實例，所有 function 皆由呼叫端傳入 `channel_config`。
 
 ### 4.1 `verify_signature(channel_secret, body, signature) -> bool`
 
 - 使用 HMAC-SHA256 驗證 LINE 發送的 Webhook 請求是否合法
 - 在 `main.py` 的 webhook 端點被呼叫
 
-### 4.2 `get_line_api() -> AsyncMessagingApi`
+### 4.2 `get_line_api(channel_config) -> AsyncMessagingApi`
 
-- Factory function，建立 `AsyncMessagingApi` 實例
-- 雖然定義了但目前 `handlers.py` 沒有使用（它直接自己 new）
+- Factory function，根據 `channel_config` 建立 `AsyncMessagingApi` 實例
+- `handlers.py` 內部使用 `_make_api()` 達到相同效果
 
 ---
 
 ## 5. `handlers.py`
 
-**角色**：所有 LINE 事件的商業邏輯處理器。
+**角色**：所有 LINE 事件的商業邏輯處理器。所有 handler 皆接收 `channel_config: dict` 參數以支援多頻道。
 
-### 5.1 `handle_message(event: MessageEvent)` — 文字訊息
+### 5.1 `handle_message(event, channel_config)` — 文字訊息
 
 | 使用者輸入 | 行為 |
 |---|---|
-| `grade` | 回傳評分專用的 Flex Message（含 LIFF 連結） |
+| `grade` | 回傳評分專用的 Flex Message（按鈕 URI 設為該頻道的 `liff_uri`） |
 | `welcome` | 回傳歡迎 Flex Message |
 | `upload` | 回傳上傳 Flex Message |
-| `menu` / `選單` | 將使用者的 Rich Menu 切換為 A 選單 + 文字確認 |
+| `menu` / `選單` | 將使用者的 Rich Menu 切換為指定選單 + 文字確認 |
 | 其他 | Echo 使用者訊息 + 顯示 User ID / Group ID |
 
-**管理員模式**：如果在群組中，只有 `user_id == ADMIN` 且訊息以 `ADMIN_PREFIX` 開頭時才會處理。
+**管理員模式**：如果在群組中，只有 `user_id == admin` 且訊息以 `admin_prefix` 開頭時才會處理。
 
-### 5.2 `handle_image_message(event: MessageEvent)` — 圖片訊息（核心功能）
+### 5.2 `handle_image_message(event, channel_config)` — 圖片訊息（核心功能）
 
 完整流程已在另一份文件詳述，這裡只寫架構重點：
 
 ```
 收到圖片事件
   │
-  ├─ 權限檢查（群組只限 ADMIN）
+  ├─ 權限檢查（群組只限 admin）
+  │
+  ├─ 重疊處理檢查（_processing_users + _state_lock）
+  │     └─ 已有圖片在處理 → 回覆「請稍候再上傳」，結束
+  │
+  ├─ 每日用量檢查（_user_daily_usage + _usage_lock，每日 10 次）
+  │     └─ 已達上限 → 回覆「已達每日使用上限」，結束
+  │
+  ├─ 立即回覆「請稍候」Flex Message（佔用 reply_token）
   │
   ├─ 下載圖片 binary（AsyncMessagingApiBlob.get_message_content）
   │
@@ -176,16 +188,22 @@ configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
   ├─ OCR 辨識（gemini.ocr_image）
   │
   ├─ 驗證是否為英文作文（english_essay.is_english_essay）
-  │     └─ 不合格 → 回傳錯誤文字訊息，結束
+  │     └─ 不合格 → 推播錯誤文字訊息（push_message），結束
   │
   ├─ AI 評分（gemini.score_essay）→ 產出 output/{uuid}.md
   │
   ├─ Markdown 轉 HTML（gemini.md_to_html）→ 產出 output/{uuid}.html
   │
-  └─ 回傳 Flex Message，按鈕連結至 /webhook/scorepage?id={uuid}
+  ├─ 推播 Flex Message（push_message），按鈕連結至 endpoint_url?id={uuid}
+  │
+  └─ finally: 從 _processing_users 中移除該 user_id
 ```
 
-### 5.3 `handle_audio_message(event: MessageEvent)` — 音訊訊息
+**關鍵細節**：
+- 先用 `reply_message` 回覆「請稍候」，後續進度使用 `push_message`（因 reply_token 已用畢）
+- `try/finally` 確保即使處理發生例外，`_processing_users` 也會被清除，不會卡死
+
+### 5.3 `handle_audio_message(event, channel_config)` — 音訊訊息
 
 類似圖片流程，但：
 - 用 `get_message_content_with_http_info` 取得 raw data + Content-Type
@@ -194,7 +212,7 @@ configuration = Configuration(access_token=CHANNEL_ACCESS_TOKEN)
 - 呼叫 `gemini.transcribe_audio` 進行語音轉文字
 - 直接回傳文字內容給使用者（不評分）
 
-### 5.4 `handle_postback(event: PostbackEvent)` — Postback
+### 5.4 `handle_postback(event, channel_config)` — Postback
 
 目前為空實作（`pass`），留待未來擴充。
 
@@ -249,13 +267,9 @@ def is_english_essay(text: str) -> tuple[bool, str, str]:
 | `score_essay(text, file_id)` | `_call_gemini_text(ELEMENTARY_PROMPT, text, file_id)` | 作文評分 → 寫入 `.md` |
 | `md_to_html(file_id)` | 直接呼叫 Gemini + `_extract_html()` | `.md` → `.html` |
 
-#### `md_to_html` 的特殊處理
+#### `_extract_html(raw)` 的特殊處理
 
-```python
-def _extract_html(raw: str) -> str:
-```
-
-- Gemini 回傳的 HTML 可能包含 Markdown code block（` ```html...``` `）
+- Gemini 回傳的 HTML 可能包含 Markdown code block（```` ```html...``` ````）
 - 此函數會從 `<!DOCTYPE` / `<html` 開始擷取，並移除結尾的 ` ``` `
 
 ---
@@ -271,20 +285,29 @@ def _extract_html(raw: str) -> str:
   ▼
 LINE Platform
   │
-  │ POST /webhook/line (x-line-signature)
+  │ POST /webhook/line/{channel_idx} (x-line-signature)
   ▼
 main.py:webhook()
   │
-  ├─ line_utils.verify_signature()  ─── 驗證簽章
+  ├─ 驗證 channel_idx 範圍
+  ├─ line_utils.verify_signature()  ─── 使用該頻道的 channel_secret 驗證簽章
   │
   ├─ 判斷 type=message, message.type=image
   │
-  └─ asyncio.create_task(handle_image_message(event))
+  └─ asyncio.create_task(handle_image_message(event, channel_config))
         │
         ▼
       handlers.py:handle_image_message()
         │
-        ├─ 權限檢查（群組 + ADMIN）
+        ├─ 權限檢查（群組 + admin）
+        │
+        ├─ 重疊處理檢查（_processing_users）
+        │     └─ 忙碌中 → 回覆「請稍候」→ 結束
+        │
+        ├─ 每日用量檢查（10 次/日）
+        │     └─ 已達上限 → 回覆「請明天再來」→ 結束
+        │
+        ├─ 回覆「請稍候」Flex Message（佔用 reply_token）
         │
         ├─ AsyncMessagingApiBlob.get_message_content(message_id)
         │     │
@@ -300,7 +323,7 @@ main.py:webhook()
         │
         ├─ english_essay.is_english_essay(text)
         │     │
-        │     ├─ 不合格 → LINE 回覆錯誤訊息 ─── 結束
+        │     ├─ 不合格 → LINE push_message 錯誤訊息 ─── 結束
         │     │
         │     └─ 合格 → 繼續
         │
@@ -318,14 +341,16 @@ main.py:webhook()
         │     ├─ Gemini API ─── Markdown → HTML
         │     └─ 寫入 output/{basename}.html
         │
-        └─ LINE 回覆 Flex Message
-              │
-              └─ 按鈕連結 → GET /webhook/scorepage?id={basename}
-                              │
-                              └─ FastAPI 回傳 output/{basename}.html
-                                   │
-                                   ▼
-                              使用者瀏覽器看到評分結果
+        ├─ LINE push_message Flex Message（附評分結果連結）
+        │     │
+        │     └─ 按鈕連結 → GET /webhook/scorepage?id={basename}
+        │                     │
+        │                     └─ FastAPI 回傳 output/{basename}.html
+        │                          │
+        │                          ▼
+        │                     使用者瀏覽器看到評分結果
+        │
+        └─ finally: 從 _processing_users 清除 user_id
 ```
 
 ---
@@ -340,3 +365,4 @@ main.py:webhook()
 | 改評分規則 | `english_essay.py` | `is_english_essay` |
 | 新增設定值 | `config.py` + `settings.yaml` | 現有變數模式 |
 | 加新的 HTTP 路由 | `main.py` | `@app.get/post` |
+| 新增 LINE 頻道 | `settings.yaml` + `settings.local.yaml` | 擴充 `line` 陣列即可 |
