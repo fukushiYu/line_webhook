@@ -141,7 +141,7 @@ await md_to_html(basename)
 
 ```python
 flex_dict = FLEX_GRADE
-flex_dict["body"]["contents"][1]["action"]["uri"] = f"{channel_config['endpoint_url']}?id={basename}"
+flex_dict["body"]["contents"][1]["action"]["uri"] = f"{channel_config['liff_uri']}?id={basename}"
 line_bot_api = _make_api(channel_config)
 await line_bot_api.push_message(
     PushMessageRequest(
@@ -153,7 +153,7 @@ await line_bot_api.push_message(
 
 - 從 config 載入預設的 Flex Message 模板（`FLEX_GRADE`）
 - **動態修改**按鈕的 URI，加上 query parameter `?id={basename}`
-- 使用者點擊後會開啟 `endpoint_url?id=<uuid>` 的網頁，顯示評分結果
+- 使用者點擊後會開啟 `liff_uri?id=<uuid>` 的網頁（LIFF 自動包裝為 `liff.state`），顯示評分結果
 
 ### 9. 清理（L177-179）
 

@@ -71,11 +71,11 @@ async def webhook(channel_idx: int, request: Request, x_line_signature: str = He
 
 ```python
 @app.get("/webhook/scorepage")
-async def score_page(id: str = Query(None)):
+async def score_page(liff_state: str = Query(None, alias="liff.state")):
 ```
 
-- 有 `id` 參數 → 回傳 `output/{id}.html`（AI 產生的評分結果網頁）
-- 無 `id` 參數 → 回傳 `static/scorepage.html`（靜態頁面）
+- 有 `liff.state` 參數 → 從中 `parse_qs` 取出 `id`，回傳 `output/{id}.html`（AI 產生的評分結果網頁）
+- 無 `liff.state` 參數 → 回傳 `static/scorepage.html`（靜態頁面）
 
 ### 2.3 `GET /webhook/style.css`
 
@@ -343,9 +343,9 @@ main.py:webhook()
         │
         ├─ LINE push_message Flex Message（附評分結果連結）
         │     │
-        │     └─ 按鈕連結 → GET /webhook/scorepage?id={basename}
+        │     └─ 按鈕連結 → liff_uri?id={basename}（LIFF 自動轉為 ?liff.state=?id={basename}）
         │                     │
-        │                     └─ FastAPI 回傳 output/{basename}.html
+        │                     └─ FastAPI 接收 ?liff.state，解析 id，回傳 output/{basename}.html
         │                          │
         │                          ▼
         │                     使用者瀏覽器看到評分結果
