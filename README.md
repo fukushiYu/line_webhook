@@ -12,7 +12,7 @@
 - **安全性驗證:** 使用 `line_utils.py` 進行 HMAC-SHA256 簽章驗證，確保請求確實來自 LINE。
 - **事件分派:** 解析 JSON 請求體，根據事件類型（`message`, `postback`）將請求非同步派發至 `handlers.py` 中對應的處理函數，並傳入該頻道的 `channel_config` dict。
 - **日誌設定:** 統一格式化 uvicorn 日誌（時間戳 + 層級 + 訊息），覆蓋 `uvicorn` / `uvicorn.error` / `uvicorn.access` 三個 logger。
-- **靜態資源服務:** 提供 API 用於存取生成的評分報告 (`/webhook/scorepage`) 與網頁樣式 (`/webhook/style.css`)。
+- **靜態資源服務:** 提供 API 用於存取生成的評分報告 (`/webhook/scorepage`，透過 `liff.state` 參數取得報告 id) 與網頁樣式 (`/webhook/style.css`)。
 
 ### 2. Python 模組架構說明
 
@@ -38,7 +38,7 @@
 | **語音轉寫** | 上傳語音訊息 → 透過 Gemini API 轉寫為文字 |
 | **英文作文檢測** | `is_english_essay()` 判斷 OCR 結果是否為英文作文，非英文作文不回傳評分 |
 | **Markdown → HTML** | 評分結果自動轉換為卡片式 HTML，CSS 內嵌，支援手機 LIFF 顯示 |
-| **LIFF 評分頁** | `GET /webhook/scorepage?id=<uuid>` 回傳對應的 HTML 評分報告 |
+| **LIFF 評分頁** | `GET /webhook/scorepage?liff.state=?id=<uuid>` 回傳對應的 HTML 評分報告（LINE LIFF 自動傳入 `liff.state`） |
 | **群組管理** | 僅管理員可使用 `@小英` 前綴觸發指令 |
 | **Rich Menu** | 輸入 `menu` 即可連結特殊圖文選單 |
 | **簽章驗證** | 所有 Webhook 請求皆經過 HMAC-SHA256 簽章驗證 |
@@ -191,7 +191,7 @@ uvicorn main:app --port 9000
 | 端點 | 方法 | 說明 |
 |------|------|------|
 | `/webhook/line/{channel_idx}` | `POST` | LINE Messaging API Webhook，`channel_idx` 對應 `settings.yaml` 中 `line` 陣列索引（需附 `X-Line-Signature`） |
-| `/webhook/scorepage` | `GET` | 回傳靜態評分頁（無 `?id=` 時）或對應的 HTML 評分報告 |
+| `/webhook/scorepage` | `GET` | 回傳靜態評分頁（無 `liff.state` 時）或從 `liff.state` 解析 `id` 回傳對應 HTML 評分報告 |
 | `/webhook/style.css` | `GET` | 外部 CSS |
 
 ---

@@ -54,14 +54,18 @@ async def webhook(channel_idx: int, request: Request, x_line_signature: str = He
     return "OK"
 
 
-# ── 評分報告頁面：有 ?id= 則回傳對應 HTML，無則顯示靜態預設頁 ──
+# ── 評分報告頁面：從 liff.state 取出 id，找不到則顯示靜態預設頁 ──
 @app.get("/webhook/scorepage")
-async def score_page(id: str = Query(None)):
-    if id:
-        filepath = os.path.join("output", f"{id}.html")
-        if os.path.exists(filepath):
-            return FileResponse(filepath)
-        return HTMLResponse("<h1>Not Found</h1>", status_code=404)
+async def score_page(liff_state: str = Query(None, alias="liff.state")):
+    if liff_state:
+        from urllib.parse import parse_qs
+        params = parse_qs(liff_state.lstrip("?"))
+        id = params.get("id", [None])[0]
+        if id:
+            filepath = os.path.join("output", f"{id}.html")
+            if os.path.exists(filepath):
+                return FileResponse(filepath)
+            return HTMLResponse("<h1>Not Found</h1>", status_code=404)
     return FileResponse("static/scorepage.html")
 
 

@@ -166,7 +166,7 @@ async def handle_image_message(event: MessageEvent, channel_config: dict):
         await score_essay(cleaned, basename)
         await md_to_html(basename)
         flex_dict = FLEX_GRADE
-        flex_dict["body"]["contents"][1]["action"]["uri"] = f"{channel_config['endpoint_url']}?id={basename}"
+        flex_dict["body"]["contents"][1]["action"]["uri"] = f"{channel_config['liff_uri']}?id={basename}"
         line_bot_api = _make_api(channel_config)
         await line_bot_api.push_message(
             PushMessageRequest(
