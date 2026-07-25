@@ -40,7 +40,9 @@ FLEX_WAIT = conf["flex_wait"]
 
 GEMINI_API_KEYS = conf["gemini_api_key"]
 LLM_MODEL = conf["llm_model"]
+SCORING_MODE = conf.get("scoring_mode", "v1")
 GEMINI_OCR_PROMPT = conf["gemini_ocr_prompt"]
 GEMINI_AUDIO_PROMPT = conf["gemini_audio_prompt"]
 ELEMENTARY_PROMPT = _resolve(conf["elementary_prompt"])
+ELEMENTARY_HTML_PROMPT = _resolve(conf["elementary_html_prompt"])
 MD_TO_HTML_PROMPT = _resolve(conf["MD_TO_HTML_PROMPT"])

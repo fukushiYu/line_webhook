@@ -2,6 +2,9 @@
 gemini_api_key:
   - '請在 settings.local.yaml 中設定 API Key'
 llm_model: 'gemini-3.1-flash-lite'
+scoring_mode: 'v2'
+# scoring_mode: 'v1'  # V1: 3 次 Gemini（OCR → scoring→.md → md_to_html→.html）
+# scoring_mode: 'v2'  # V2: 2 次 Gemini（OCR → scoring 直出 .html），合併 scoring + md_to_html
 gemini_ocr_prompt: '將圖片中的英文作文識別出來，不要做任何的修改，不要添加其他語詞'
 gemini_audio_prompt: '將語音內容轉寫為文字，不要做任何的修改，不要添加其他語詞'
 line:
@@ -141,5 +144,7 @@ flex_upload:
       height: sm
 
 elementary_prompt: '!include prompt/elementary_prompt.txt'
+
+elementary_html_prompt: '!include prompt/elementary_prompt_html.txt'
 
 MD_TO_HTML_PROMPT: '!include prompt/MD_TO_HTML_PROMPT.txt'

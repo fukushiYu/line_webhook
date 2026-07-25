@@ -34,10 +34,10 @@
 | 功能 | 說明 |
 |------|------|
 | **文字指令** | 回應 `grade` / `welcome` / `upload` / `menu` 等關鍵字，顯示對應的 Flex Message |
-| **圖片 OCR + 評分** | 上傳圖片 → 辨識英文作文 → Gemini 評分 → 輸出 `.md` + `.html`（每日上限 10 次，處理中不接受重疊上傳） |
+| **圖片 OCR + 評分** | 上傳圖片 → 辨識英文作文 → Gemini 評分 → 輸出評分報告（支援 V1/V2 雙模式） |
 | **語音轉寫** | 上傳語音訊息 → 透過 Gemini API 轉寫為文字 |
 | **英文作文檢測** | `is_english_essay()` 判斷 OCR 結果是否為英文作文，非英文作文不回傳評分 |
-| **Markdown → HTML** | 評分結果自動轉換為卡片式 HTML，CSS 內嵌，支援手機 LIFF 顯示 |
+| **Markdown → HTML** | V1 模式：評分結果經 Gemini 轉為卡片式 HTML；V2 模式：評分時直接輸出 HTML |
 | **LIFF 評分頁** | `GET /webhook/scorepage?liff.state=?id=<uuid>` 回傳對應的 HTML 評分報告（LINE LIFF 自動傳入 `liff.state`） |
 | **群組管理** | 僅管理員可使用 `@小英` 前綴觸發指令 |
 | **Rich Menu** | 輸入 `menu` 即可連結特殊圖文選單 |
@@ -57,9 +57,10 @@ hook/
 ├── english_essay.py       # 英文作文檢測工具
 ├── style.css              # 卡片式 HTML 樣式（內嵌至輸出 HTML）
 ├── menu.sh                # 服務管理腳本（啟動/停止/查看 Log）
-├── settings.yaml          # 公開設定（Flex 模板、提示詞、非機密參數，可上傳 GitHub）
+├── settings.yaml          # 公開設定（Flex 模板、提示詞、模型名稱、評分模式、非機密參數，可上傳 GitHub）
 ├── prompt/                # 提示詞模板（從 settings.yaml 抽離，以 !include 載入）
 │   ├── elementary_prompt.txt
+│   ├── elementary_prompt_html.txt   # V2 模式：合併評分規約 + HTML 輸出格式
 │   └── MD_TO_HTML_PROMPT.txt
 ├── settings.local.yaml    # 機密設定（API Key、Token、Secret，已 .gitignore）
 ├── requirements.txt       # Python 依賴
@@ -98,6 +99,8 @@ main.py             路由層         HTTP 請求分派、簽章驗證
 
 ## 圖片處理流程
 
+### V1（原始流程，`scoring_mode: v1`，3 次 Gemini 呼叫）
+
 ```
 使用者上傳圖片
     → POST /webhook/line (type=image)           [main.py]
@@ -106,12 +109,25 @@ main.py             路由層         HTTP 請求分派、簽章驗證
     → 每日用量檢查（每日 10 次上限）             [handlers.py]
     → 立即回覆「請稍候」Flex Message             [handlers.py]
     → 從 LINE 下載原始圖片，儲存至 images/
-    → ocr_image(filepath)                        [gemini.py]
+    → ocr_image(filepath)                        [gemini.py]  呼叫 #1
     → is_english_essay(text)                     [english_essay.py]
-    → score_essay(cleaned, basename)             [gemini.py]  內部存 output/{id}.md
-    → md_to_html(basename)                       [gemini.py]  內部存 output/{id}.html
+    → score_essay(cleaned, basename)             [gemini.py]  呼叫 #2，存 output/{id}.md
+    → md_to_html(basename)                       [gemini.py]  呼叫 #3，存 output/{id}.html
     → push_message 回傳評分結果（不佔用 reply_token）
 ```
+
+### V2（最佳化流程，`scoring_mode: v2`，2 次 Gemini 呼叫）
+
+```
+使用者上傳圖片
+    → ...（同上至 OCR）
+    → ocr_image(filepath)                        [gemini.py]  呼叫 #1
+    → is_english_essay(text)                     [english_essay.py]
+    → score_essay_direct_html(cleaned, basename) [gemini.py]  呼叫 #2，直存 output/{id}.html
+    → push_message 回傳評分結果（不佔用 reply_token）
+```
+
+V2 將 scoring 與 md_to_html 合併為一次 Gemini 呼叫，由 `prompt/elementary_prompt_html.txt` 直接輸出 HTML，跳過 .md 中間格式，節省一次 API 呼叫與檔案 I/O。
 
 ### 使用限制
 
@@ -148,7 +164,7 @@ pip install -r requirements.txt
 
 **第一步：編輯 `settings.yaml`（公開）**
 
-此檔案已包含完整的公開設定（Flex 模板、提示詞等），無需修改即可使用。機密欄位已寫明 `請在 settings.local.yaml 中設定`。
+此檔案已包含完整的公開設定（Flex 模板、提示詞、評分模式等）。`scoring_mode` 可切換 V1（3 次 API 呼叫）與 V2（2 次 API 呼叫）。機密欄位已寫明 `請在 settings.local.yaml 中設定`。
 
 **第二步：建立 `settings.local.yaml`（機密）**
 

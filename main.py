@@ -9,7 +9,7 @@ from handlers import handle_message, handle_image_message, handle_audio_message,
 # ── uvicorn 日誌統一格式（時間、層級、訊息） ──
 LOG_FORMAT = "%(asctime)s %(levelname)s %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-for _name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+for _name in ("", "uvicorn", "uvicorn.error", "uvicorn.access"):
     _logger = logging.getLogger(_name)
     _logger.handlers.clear()
     _handler = logging.StreamHandler()

@@ -1,6 +1,8 @@
 import uuid
 import os
+import time
 import asyncio
+import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -18,12 +20,13 @@ from linebot.v3.messaging import (
 from linebot.v3.webhooks import MessageEvent, PostbackEvent
 
 from config import (
+    SCORING_MODE,
     FLEX_WELCOME,
     FLEX_UPLOAD,
     FLEX_GRADE,
     FLEX_WAIT,
 )
-from gemini import ocr_image, transcribe_audio, score_essay, md_to_html
+from gemini import ocr_image, transcribe_audio, score_essay, score_essay_direct_html, md_to_html
 from english_essay import is_english_essay
 
 # ── 時區與每日上限 ──
@@ -114,6 +117,7 @@ async def handle_image_message(event: MessageEvent, channel_config: dict):
         return
 
     try:
+        api_client: AsyncApiClient | None = None
         # ── 每日用量檢查 ──
         async with _usage_lock:
             today = datetime.now(TAIPEI_TZ).date()
@@ -149,12 +153,13 @@ async def handle_image_message(event: MessageEvent, channel_config: dict):
         filepath = os.path.join("images", filename)
         with open(filepath, "wb") as f:
             f.write(content)
-        await api_client.close()
 
+        t_ocr = time.monotonic()
         text = await ocr_image(filepath)
+        t_ocr_done = time.monotonic()
+        logging.info(f"[MODE] {SCORING_MODE.upper()} | ocr: {t_ocr_done-t_ocr:.3f}s")
         ok, reason, cleaned = is_english_essay(text)
         if not ok:
-            line_bot_api = _make_api(channel_config)
             await line_bot_api.push_message(
                 PushMessageRequest(
                     to=user_id,
@@ -163,11 +168,24 @@ async def handle_image_message(event: MessageEvent, channel_config: dict):
             )
             return
 
-        await score_essay(cleaned, basename)
-        await md_to_html(basename)
+        # ── 評分流程：依 SCORING_MODE 選擇 V1（3 次呼叫）或 V2（2 次呼叫） ──
+        # V1（原始流程）：score_essay → 存 .md → md_to_html → 存 .html
+        # V2（最佳化流程）：score_essay_direct_html → 直存 .html（合併 scoring + HTML 轉換）
+        # 記錄每階段耗時，供效能比較。切換模式僅需修改 settings.yaml 的 scoring_mode。
+        if SCORING_MODE == "v1":
+            t0 = time.monotonic()
+            await score_essay(cleaned, basename)
+            t1 = time.monotonic()
+            await md_to_html(basename)
+            t2 = time.monotonic()
+            logging.info(f"[MODE] V1 | score_essay: {t1-t0:.3f}s | md_to_html: {t2-t1:.3f}s | total: {t2-t0:.3f}s")
+        else:
+            t0 = time.monotonic()
+            await score_essay_direct_html(cleaned, basename)
+            t1 = time.monotonic()
+            logging.info(f"[MODE] V2 | score_essay_direct_html: {t1-t0:.3f}s")
         flex_dict = FLEX_GRADE
         flex_dict["body"]["contents"][1]["action"]["uri"] = f"{channel_config['liff_uri']}?id={basename}"
-        line_bot_api = _make_api(channel_config)
         await line_bot_api.push_message(
             PushMessageRequest(
                 to=user_id,
@@ -177,6 +195,8 @@ async def handle_image_message(event: MessageEvent, channel_config: dict):
     finally:
         async with _state_lock:
             _processing_users.discard(user_id)
+        if api_client is not None:
+            await api_client.close()
 
 # ── LINE 音訊 Content-Type 對應副檔名 ──
 AUDIO_EXT_MAP = {
