@@ -1,7 +1,7 @@
 import base64,os
 import random
 import aiohttp
-from config import GEMINI_API_KEYS, LLM_MODEL, GEMINI_OCR_PROMPT, GEMINI_AUDIO_PROMPT, ELEMENTARY_PROMPT, ELEMENTARY_HTML_PROMPT, MD_TO_HTML_PROMPT
+from config import GEMINI_API_KEYS, LLM_MODEL, GEMINI_OCR_PROMPT, GEMINI_AUDIO_PROMPT, ELEMENTARY_PROMPT, ELEMENTARY_HTML_PROMPT, MD_TO_HTML_PROMPT, MAX_OUTPUT_TOKENS
 
 # ── 通用 Gemini API 呼叫（多媒體內容：圖片/音訊 → base64 內嵌） ──
 async def _call_gemini(filepath: str, mime_type: str, prompt: str) -> str:
@@ -17,7 +17,8 @@ async def _call_gemini(filepath: str, mime_type: str, prompt: str) -> str:
                 {"text": prompt},
                 {"inline_data": {"mime_type": mime_type, "data": file_b64}},
             ]
-        }]
+        }],
+        "generationConfig": {"maxOutputTokens": MAX_OUTPUT_TOKENS}
     }
 
     async with aiohttp.ClientSession() as session:
@@ -46,7 +47,9 @@ async def _call_gemini_text(prompt: str, text: str, file_id: str) -> str:
         "contents": [
             {"parts": [
                 {"text": prompt},
-                {"text": f"學生的文章：\n{text}"},]}]}
+                {"text": f"學生的文章：\n{text}"},]}],
+        "generationConfig": {"maxOutputTokens": MAX_OUTPUT_TOKENS}
+    }
     async with aiohttp.ClientSession() as session:
         async with session.post(url, json=payload) as resp:
             result = await resp.json()
@@ -76,7 +79,8 @@ async def score_essay_direct_html(text: str, file_id: str) -> str:
                 {"text": ELEMENTARY_HTML_PROMPT},
                 {"text": f"學生的文章：\n{text}"},
             ]}
-        ]
+        ],
+        "generationConfig": {"maxOutputTokens": MAX_OUTPUT_TOKENS}
     }
     async with aiohttp.ClientSession() as session:
         async with session.post(url, json=payload) as resp:
@@ -107,7 +111,7 @@ async def md_to_html(file_id: str) -> str:
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{LLM_MODEL}:generateContent?key={api_key}"
     with open(os.path.join("output",f"{file_id}.md"), 'r', encoding='utf-8') as f:
         md_text = f.read()
-    payload = {"contents": [{"parts": [{"text": MD_TO_HTML_PROMPT},{"text": md_text},]}]}
+    payload = {"contents": [{"parts": [{"text": MD_TO_HTML_PROMPT},{"text": md_text},]}], "generationConfig": {"maxOutputTokens": MAX_OUTPUT_TOKENS}}
     async with aiohttp.ClientSession() as session:
         async with session.post(url, json=payload) as resp:
             result = await resp.json()

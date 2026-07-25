@@ -77,8 +77,25 @@ else:
 
 ---
 
+---
+
+## 追加：`max_output_tokens` 設定
+
+### 動機
+
+V2 模式下 Gemini 直接輸出完整 HTML 頁面（含 Chart.js 雷達圖），如果沒有設定輸出上限，預設 8192 tokens 可能導致長篇作文的報告被截斷，產生破版 HTML。
+
+### 變更內容
+
+1. **`settings.yaml`** — 新增 `max_output_tokens: 32768`
+2. **`config.py`** — 新增 `MAX_OUTPUT_TOKENS = conf.get("max_output_tokens", 8192)`
+3. **`gemini.py`** — 4 處 API payload 全部加入 `"generationConfig": {"maxOutputTokens": MAX_OUTPUT_TOKENS}`
+
+所有 Gemini 呼叫統一使用此上限，確保輸出完整。
+
 ## 向後相容性
 
 - `scoring_mode: 'v1'` 為原始流程，行為完全一致
 - 兩種模式產出的 `.html` 檔案結構相同，LIFF 頁面與 scorepage endpoint 無需修改
 - 路由、LINE Webhook、前端完全不受影響
+- 若 `settings.yaml` 未設定 `max_output_tokens`，預設為 8192，行為與之前相同

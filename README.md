@@ -164,7 +164,7 @@ pip install -r requirements.txt
 
 **第一步：編輯 `settings.yaml`（公開）**
 
-此檔案已包含完整的公開設定（Flex 模板、提示詞、評分模式等）。`scoring_mode` 可切換 V1（3 次 API 呼叫）與 V2（2 次 API 呼叫）。機密欄位已寫明 `請在 settings.local.yaml 中設定`。
+此檔案已包含完整的公開設定（Flex 模板、提示詞、評分模式等）。`scoring_mode` 可切換 V1（3 次 API 呼叫）與 V2（2 次 API 呼叫）。`max_output_tokens` 控制 Gemini 輸出上限（預設 8192，建議 32768 確保 HTML 完整）。機密欄位已寫明 `請在 settings.local.yaml 中設定`。
 
 **第二步：建立 `settings.local.yaml`（機密）**
 

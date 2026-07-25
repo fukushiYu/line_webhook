@@ -123,6 +123,7 @@ elementary_prompt: '!include prompt/elementary_prompt.txt'
 | `FLEX_WELCOME` / `FLEX_UPLOAD` / `FLEX_GRADE` / `FLEX_WAIT` | Flex Message 模板（dict） |
 | `GEMINI_API_KEYS` | Gemini API Key 陣列（可多個輪流使用） |
 | `LLM_MODEL` | Gemini 模型名稱 |
+| `MAX_OUTPUT_TOKENS` | Gemini API 輸出 token 上限（預設 8192，設定檔可調整） |
 | `GEMINI_OCR_PROMPT` | OCR 用的 System Prompt |
 | `GEMINI_AUDIO_PROMPT` | 語音辨識用的 System Prompt |
 | `ELEMENTARY_PROMPT` | 評分作文用的 System Prompt（透過 `_resolve` 載入） |
@@ -252,6 +253,7 @@ def is_english_essay(text: str) -> tuple[bool, str, str]:
 - 讀取檔案 → base64 編碼 → 與 prompt 一起組成 Gemini API 的 payload
 - 隨機選取一組 API key（來自 `GEMINI_API_KEYS` 陣列）達到輪流使用
 - 用 `aiohttp` 非同步呼叫 Gemini `generateContent` 端點
+- 所有 payload 皆帶入 `generationConfig.maxOutputTokens = MAX_OUTPUT_TOKENS`，避免輸出被截斷
 
 #### `_call_gemini_text(prompt, text, file_id) -> str`
 
