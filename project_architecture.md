@@ -42,7 +42,7 @@ main.py                        ← FastAPI 伺服器，接收 LINE Webhook
 
 ## 2. `main.py`
 
-**角色**：FastAPI 應用程式入口，對外暴露三個端點。
+**角色**：FastAPI 應用程式入口，對外暴露四個 HTTP 端點（另含 favicon 空回應）。
 
 ### 2.1 `POST /webhook/line/{channel_idx}` — LINE Webhook（支援多頻道）
 
@@ -86,6 +86,15 @@ async def serve_css():
 
 - 提供 CSS 給評分結果頁面美化
 
+### 2.4 `GET /favicon.ico`
+
+```python
+@app.get("/favicon.ico")
+async def favicon():
+```
+
+- 瀏覽器 favicon 請求直接回傳 204 無內容，避免多餘的 404 錯誤 log
+
 ---
 
 ## 3. `config.py`
@@ -99,10 +108,15 @@ with open("settings.yaml", "r", encoding="utf-8") as f:
 
 # 以機密設定覆蓋
 if os.path.exists("settings.local.yaml"):
-    local_conf = yaml.safe_load(f)
-    conf["gemini_api_key"] = local_conf["gemini_api_key"]
-    for i, entry in enumerate(local_conf["line"]):
-        conf["line"][i].update(entry)
+    with open("settings.local.yaml", "r", encoding="utf-8") as f:
+        local_conf = yaml.safe_load(f)
+    if local_conf:
+        if "gemini_api_key" in local_conf:
+            conf["gemini_api_key"] = local_conf["gemini_api_key"]
+        if "line" in local_conf:
+            for i, entry in enumerate(local_conf["line"]):
+                if i < len(conf["line"]):
+                    conf["line"][i].update(entry)
 ```
 
 ### 3.1 `!include` 語法
@@ -123,11 +137,13 @@ elementary_prompt: '!include prompt/elementary_prompt.txt'
 | `FLEX_WELCOME` / `FLEX_UPLOAD` / `FLEX_GRADE` / `FLEX_WAIT` | Flex Message 模板（dict） |
 | `GEMINI_API_KEYS` | Gemini API Key 陣列（可多個輪流使用） |
 | `LLM_MODEL` | Gemini 模型名稱 |
-| `MAX_OUTPUT_TOKENS` | Gemini API 輸出 token 上限（預設 8192，設定檔可調整） |
+| `SCORING_MODE` | 評分模式（`v1` = 3 次呼叫 / `v2` = 2 次呼叫，預設 `v2`，設定檔可切換） |
+| `MAX_OUTPUT_TOKENS` | Gemini API 輸出 token 上限（程式預設 8192，`settings.yaml` 目前設 32768 防 HTML 截斷） |
 | `GEMINI_OCR_PROMPT` | OCR 用的 System Prompt |
 | `GEMINI_AUDIO_PROMPT` | 語音辨識用的 System Prompt |
-| `ELEMENTARY_PROMPT` | 評分作文用的 System Prompt（透過 `_resolve` 載入） |
-| `MD_TO_HTML_PROMPT` | Markdown 轉 HTML 用的 System Prompt（透過 `_resolve` 載入） |
+| `ELEMENTARY_PROMPT` | 評分作文用的 System Prompt（V1，透過 `_resolve` 載入） |
+| `ELEMENTARY_HTML_PROMPT` | 評分 + 直出 HTML 用的 System Prompt（V2，透過 `_resolve` 載入） |
+| `MD_TO_HTML_PROMPT` | Markdown 轉 HTML 用的 System Prompt（V1，透過 `_resolve` 載入） |
 
 > **設計模式**：所有重要的字串和模板集中在 YAML，修改行為不需要改程式碼，改 YAML 就好。機密與公開設定分離，避免 Token 外洩。
 
@@ -177,7 +193,7 @@ elementary_prompt: '!include prompt/elementary_prompt.txt'
   ├─ 重疊處理檢查（_processing_users + _state_lock）
   │     └─ 已有圖片在處理 → 回覆「請稍候再上傳」，結束
   │
-  ├─ 每日用量檢查（_user_daily_usage + _usage_lock，每日 10 次）
+  ├─ 每日用量檢查（_user_daily_usage + _usage_lock，每日 10 次，Asia/Taipei 時區）
   │     └─ 已達上限 → 回覆「已達每日使用上限」，結束
   │
   ├─ 立即回覆「請稍候」Flex Message（佔用 reply_token）
@@ -186,23 +202,26 @@ elementary_prompt: '!include prompt/elementary_prompt.txt'
   │
   ├─ 存檔至 images/{uuid}.jpg
   │
-  ├─ OCR 辨識（gemini.ocr_image）
+  ├─ OCR 辨識（gemini.ocr_image）+ 計時 log（[MODE] ... | ocr: X.XXXs）
   │
   ├─ 驗證是否為英文作文（english_essay.is_english_essay）
   │     └─ 不合格 → 推播錯誤文字訊息（push_message），結束
   │
-  ├─ AI 評分（gemini.score_essay）→ 產出 output/{uuid}.md
+  ├─ 依 SCORING_MODE 分流（settings.yaml 的 scoring_mode 切換）：
+  │     ├─ v1：score_essay → 產出 output/{uuid}.md
+  │     │      → md_to_html → 產出 output/{uuid}.html（共 3 次 Gemini 呼叫）
+  │     └─ v2：score_essay_direct_html → 直接產出 output/{uuid}.html（共 2 次呼叫）
+  │           （預設 v2）
   │
-  ├─ Markdown 轉 HTML（gemini.md_to_html）→ 產出 output/{uuid}.html
+  ├─ 推播 Flex Message（push_message），按鈕連結至 liff_uri?id={uuid}
   │
-  ├─ 推播 Flex Message（push_message），按鈕連結至 endpoint_url?id={uuid}
-  │
-  └─ finally: 從 _processing_users 中移除該 user_id
+  └─ finally: 從 _processing_users 移除該 user_id + 關閉 api_client
 ```
 
 **關鍵細節**：
 - 先用 `reply_message` 回覆「請稍候」，後續進度使用 `push_message`（因 reply_token 已用畢）
 - `try/finally` 確保即使處理發生例外，`_processing_users` 也會被清除，不會卡死
+- 全程使用單一 `AsyncApiClient`，在 `finally` 中 `await api_client.close()`，避免 `Unclosed client session` 警告
 
 ### 5.3 `handle_audio_message(event, channel_config)` — 音訊訊息
 
@@ -244,7 +263,7 @@ def is_english_essay(text: str) -> tuple[bool, str, str]:
 
 ## 7. `gemini.py`
 
-**角色**：所有 Gemini API 呼叫的封裝層。對外提供 4 個公開函數。
+**角色**：所有 Gemini API 呼叫的封裝層。對外提供 5 個公開函數。
 
 ### 7.1 底層函數
 
@@ -266,8 +285,9 @@ def is_english_essay(text: str) -> tuple[bool, str, str]:
 |---|---|---|
 | `ocr_image(filepath)` | `_call_gemini(..., "image/jpeg", GEMINI_OCR_PROMPT)` | 圖片 → 文字 |
 | `transcribe_audio(filepath, mime_type)` | `_call_gemini(..., mime_type, GEMINI_AUDIO_PROMPT)` | 音訊 → 文字 |
-| `score_essay(text, file_id)` | `_call_gemini_text(ELEMENTARY_PROMPT, text, file_id)` | 作文評分 → 寫入 `.md` |
-| `md_to_html(file_id)` | 直接呼叫 Gemini + `_extract_html()` | `.md` → `.html` |
+| `score_essay(text, file_id)` | `_call_gemini_text(ELEMENTARY_PROMPT, text, file_id)` | 作文評分（V1）→ 寫入 `.md` |
+| `score_essay_direct_html(text, file_id)` | 直接呼叫 Gemini（`ELEMENTARY_HTML_PROMPT`）+ `_extract_html()` | 作文評分 + 直出 HTML（V2）→ 寫入 `.html`，跳過 `.md` 中間格式 |
+| `md_to_html(file_id)` | 直接呼叫 Gemini + `_extract_html()` | `.md` → `.html`（V1 使用） |
 
 #### `_extract_html(raw)` 的特殊處理
 
@@ -329,19 +349,21 @@ main.py:webhook()
         │     │
         │     └─ 合格 → 繼續
         │
-        ├─ gemini.score_essay(cleaned, basename)
+        ├─ 依 SCORING_MODE 分流（v2 預設）
         │     │
-        │     └─ _call_gemini_text(ELEMENTARY_PROMPT, text, basename)
-        │           │
-        │           ├─ Gemini API ─── 評分回傳 Markdown
-        │           │
-        │           └─ 寫入 output/{basename}.md
-        │
-        ├─ gemini.md_to_html(basename)
+        │     ├─ v2（2 次呼叫）：
+        │     │   gemini.score_essay_direct_html(cleaned, basename)
+        │     │     └─ Gemini API（ELEMENTARY_HTML_PROMPT）─── 評分 + 直出 HTML
+        │     │          └─ _extract_html() 清理後寫入 output/{basename}.html
         │     │
-        │     ├─ 讀取 output/{basename}.md
-        │     ├─ Gemini API ─── Markdown → HTML
-        │     └─ 寫入 output/{basename}.html
+        │     └─ v1（3 次呼叫）：
+        │         gemini.score_essay(cleaned, basename)
+        │           └─ _call_gemini_text(ELEMENTARY_PROMPT, text, basename)
+        │                └─ 寫入 output/{basename}.md
+        │         gemini.md_to_html(basename)
+        │           ├─ 讀取 output/{basename}.md
+        │           ├─ Gemini API ─── Markdown → HTML
+        │           └─ 寫入 output/{basename}.html
         │
         ├─ LINE push_message Flex Message（附評分結果連結）
         │     │
@@ -352,7 +374,7 @@ main.py:webhook()
         │                          ▼
         │                     使用者瀏覽器看到評分結果
         │
-        └─ finally: 從 _processing_users 清除 user_id
+        └─ finally: 從 _processing_users 清除 user_id + 關閉 api_client
 ```
 
 ---
@@ -363,8 +385,9 @@ main.py:webhook()
 |---|---|---|
 | 處理新的訊息類型（如影片） | `main.py` + `handlers.py` | `handle_image_message` / `handle_audio_message` |
 | 加新的文字指令 | `handlers.py` 的 `handle_message` | `if lower_text == "xxx"` |
-| 用 Gemini 做不同的事 | `gemini.py` | `ocr_image` / `score_essay` 模式 |
+| 用 Gemini 做不同的事 | `gemini.py` | `ocr_image` / `score_essay` / `score_essay_direct_html` 模式 |
 | 改評分規則 | `english_essay.py` | `is_english_essay` |
+| 切換評分流程 V1 / V2 | `settings.yaml` | 改 `scoring_mode: v1` / `v2`（重啟服務） |
 | 新增設定值 | `config.py` + `settings.yaml` | 現有變數模式 |
 | 加新的 HTTP 路由 | `main.py` | `@app.get/post` |
 | 新增 LINE 頻道 | `settings.yaml` + `settings.local.yaml` | 擴充 `line` 陣列即可 |

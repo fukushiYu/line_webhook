@@ -23,11 +23,13 @@ line:
     liff_uri: 'https://liff.line.me/1655962952-sRG07EcN'
     endpoint_url: 'https://tpe-info.blossom-academy.uk/webhook/scorepage'
     rich_menu_id: '請在 settings.local.yaml 中設定'
+
+# https://arc.blossom-academy.uk/static/k-grade.jpg
 flex_grade:
   type: bubble
   hero:
     type: image
-    url: https://arc.blossom-academy.uk/static/k-grade.jpg
+    url: https://arc.blossom-academy.uk/static/fukushi/AF02.jpg 
     size: full
     aspectRatio: '3:4'
     aspectMode: cover
@@ -53,11 +55,12 @@ flex_grade:
       margin: xl
       height: sm
 
+# https://arc.blossom-academy.uk/static/k-wait.jpg
 flex_wait:
   type: bubble
   hero:
     type: image
-    url: https://arc.blossom-academy.uk/static/k-wait.jpg
+    url: https://arc.blossom-academy.uk/static/fukushi/AF01.jpg 
     size: full
     aspectRatio: '3:4'
     aspectMode: cover
@@ -83,11 +86,12 @@ flex_wait:
         label: 等一下
         data: wait
 
+# https://arc.blossom-academy.uk/static/c-welcome.jpg
 flex_welcome:
   type: bubble
   hero:
     type: image
-    url: https://arc.blossom-academy.uk/static/c-welcome.jpg
+    url: https://arc.blossom-academy.uk/static/fukushi/AF00.jpg
     size: full
     aspectRatio: '3:4'
     aspectMode: cover

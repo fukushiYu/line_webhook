@@ -11,7 +11,7 @@
 - **LINE Webhook 接收:** 定義 `/webhook/line/{channel_idx}` 端點（支援多頻道），負責接收 LINE Platform 發送的 Webhook 事件，`channel_idx` 對應 `settings.yaml` 中 `line` 陣列的索引。
 - **安全性驗證:** 使用 `line_utils.py` 進行 HMAC-SHA256 簽章驗證，確保請求確實來自 LINE。
 - **事件分派:** 解析 JSON 請求體，根據事件類型（`message`, `postback`）將請求非同步派發至 `handlers.py` 中對應的處理函數，並傳入該頻道的 `channel_config` dict。
-- **日誌設定:** 統一格式化 uvicorn 日誌（時間戳 + 層級 + 訊息），覆蓋 `uvicorn` / `uvicorn.error` / `uvicorn.access` 三個 logger。
+- **日誌設定:** 統一格式化日誌（時間戳 + 層級 + 訊息），覆蓋 root、`uvicorn` / `uvicorn.error` / `uvicorn.access` 四個 logger（`handlers.py` 的 `logging.info` 因此得以輸出）。
 - **靜態資源服務:** 提供 API 用於存取生成的評分報告 (`/webhook/scorepage`，透過 `liff.state` 參數取得報告 id) 與網頁樣式 (`/webhook/style.css`)。
 
 ### 2. Python 模組架構說明
@@ -39,7 +39,7 @@
 | **英文作文檢測** | `is_english_essay()` 判斷 OCR 結果是否為英文作文，非英文作文不回傳評分 |
 | **Markdown → HTML** | V1 模式：評分結果經 Gemini 轉為卡片式 HTML；V2 模式：評分時直接輸出 HTML |
 | **LIFF 評分頁** | `GET /webhook/scorepage?liff.state=?id=<uuid>` 回傳對應的 HTML 評分報告（LINE LIFF 自動傳入 `liff.state`） |
-| **群組管理** | 僅管理員可使用 `@小英` 前綴觸發指令 |
+| **群組管理** | 僅管理員可使用 `admin_prefix` 前綴（如 `@小英` / `@ako`，依頻道設定）觸發指令 |
 | **Rich Menu** | 輸入 `menu` 即可連結特殊圖文選單 |
 | **簽章驗證** | 所有 Webhook 請求皆經過 HMAC-SHA256 簽章驗證 |
 
@@ -55,7 +55,7 @@ hook/
 ├── handlers.py            # 各類訊息處理器 (text/image/audio/postback)
 ├── gemini.py              # Gemini API 呼叫封裝 (OCR / 轉寫 / 評分 / MD→HTML)
 ├── english_essay.py       # 英文作文檢測工具
-├── style.css              # 卡片式 HTML 樣式（內嵌至輸出 HTML）
+├── style.css              # 評分報告樣式（由 /webhook/style.css 提供）
 ├── menu.sh                # 服務管理腳本（啟動/停止/查看 Log）
 ├── settings.yaml          # 公開設定（Flex 模板、提示詞、模型名稱、評分模式、非機密參數，可上傳 GitHub）
 ├── prompt/                # 提示詞模板（從 settings.yaml 抽離，以 !include 載入）
@@ -90,7 +90,7 @@ main.py             路由層         HTTP 請求分派、簽章驗證
 
 - **config.py** — 一切設定的單一來源。匯出 `LINE_CONFIGS` 陣列（頻道專屬設定）、Flex Message 模板、Gemini 金鑰與提示詞
 - **line_utils.py** — 與 LINE Platform 的通訊基礎（簽章驗證、API Client），無全域 `Configuration` 實例，改由呼叫端傳入 `channel_config`
-- **gemini.py** — Gemini API 呼叫封裝：`ocr_image`、`transcribe_audio`、`score_essay`、`md_to_html`
+- **gemini.py** — Gemini API 呼叫封裝：`ocr_image`、`transcribe_audio`、`score_essay`、`score_essay_direct_html`、`md_to_html`
 - **handlers.py** — 各類事件的處理邏輯，所有函式接收 `channel_config: dict` 參數以支援多頻道
 - **english_essay.py** — 判斷字數、句數、大寫比例，回傳 `(bool, reason, cleaned_text)`
 - **main.py** — 最小化 glue code，路由 `/webhook/line/{channel_idx}` 將對應頻道設定傳入 handler
@@ -209,6 +209,7 @@ uvicorn main:app --port 9000
 | `/webhook/line/{channel_idx}` | `POST` | LINE Messaging API Webhook，`channel_idx` 對應 `settings.yaml` 中 `line` 陣列索引（需附 `X-Line-Signature`） |
 | `/webhook/scorepage` | `GET` | 回傳靜態評分頁（無 `liff.state` 時）或從 `liff.state` 解析 `id` 回傳對應 HTML 評分報告 |
 | `/webhook/style.css` | `GET` | 外部 CSS |
+| `/favicon.ico` | `GET` | 回傳 204 空回應（避免多餘 404 log） |
 
 ---
 
@@ -221,7 +222,7 @@ uvicorn main:app --port 9000
 | `upload` | 私訊 / 群組 | 傳送上傳提示 Flex Message |
 | `menu` / `選單` | 私訊 / 群組 | 連結 Rich Menu 至該使用者 |
 | 其他文字 | 私訊 | Echo 回覆使用者 ID 與群組 ID |
-| `@小英 <指令>` | 群組（限管理員） | 管理員專用前綴 |
+| `{admin_prefix} <指令>` | 群組（限管理員） | 管理員專用前綴（如 `@小英` / `@ako`，依頻道設定） |
 
 ---
 
