@@ -44,6 +44,7 @@ SCORING_MODE = conf.get("scoring_mode", "v1")
 MAX_OUTPUT_TOKENS = conf.get("max_output_tokens", 8192)
 GEMINI_OCR_PROMPT = conf["gemini_ocr_prompt"]
 GEMINI_AUDIO_PROMPT = conf["gemini_audio_prompt"]
+LOGO_URL = conf.get("logo_url", "")
 ELEMENTARY_PROMPT = _resolve(conf["elementary_prompt"])
 ELEMENTARY_HTML_PROMPT = _resolve(conf["elementary_html_prompt"])
 MD_TO_HTML_PROMPT = _resolve(conf["MD_TO_HTML_PROMPT"])

@@ -1,7 +1,8 @@
 import base64,os
 import random
+import re
 import aiohttp
-from config import GEMINI_API_KEYS, LLM_MODEL, GEMINI_OCR_PROMPT, GEMINI_AUDIO_PROMPT, ELEMENTARY_PROMPT, ELEMENTARY_HTML_PROMPT, MD_TO_HTML_PROMPT, MAX_OUTPUT_TOKENS
+from config import GEMINI_API_KEYS, LLM_MODEL, GEMINI_OCR_PROMPT, GEMINI_AUDIO_PROMPT, ELEMENTARY_PROMPT, ELEMENTARY_HTML_PROMPT, MD_TO_HTML_PROMPT, MAX_OUTPUT_TOKENS, LOGO_URL
 
 # ── 通用 Gemini API 呼叫（多媒體內容：圖片/音訊 → base64 內嵌） ──
 async def _call_gemini(filepath: str, mime_type: str, prompt: str) -> str:
@@ -87,7 +88,7 @@ async def score_essay_direct_html(text: str, file_id: str) -> str:
             result = await resp.json()
     try:
         result_text = result["candidates"][0]["content"]["parts"][0]["text"]
-        html = _extract_html(result_text)
+        html = _inject_logo(_extract_html(result_text), LOGO_URL)
         os.makedirs("output", exist_ok=True)
         with open(os.path.join("output", f"{file_id}.html"), "w", encoding="utf-8") as f:
             f.write(html)
@@ -105,6 +106,19 @@ def _extract_html(raw: str) -> str:
         raw = raw.rsplit("```", 1)[0].strip()
     return raw
 
+# ── 於 <article> 開頭注入可設定的 Logo（<img class="score-logo">，高度由 style.css 控制） ──
+# logo_url 為空字串時不注入，維持原 HTML。找不到 <article> 退而插入 <body> 之後，再找不到則插在最前端。
+def _inject_logo(html: str, logo_url: str) -> str:
+    if not logo_url:
+        return html
+    img_tag = f'<img class="score-logo" src="{logo_url}" alt="logo">'
+    for pattern in (r"<article[^>]*>", r"<body[^>]*>"):
+        match = re.search(pattern, html, re.IGNORECASE)
+        if match:
+            pos = match.end()
+            return html[:pos] + "\n" + img_tag + html[pos:]
+    return img_tag + "\n" + html
+
 # ── 將評分結果 .md 轉換為卡片式 HTML 頁面 ──
 async def md_to_html(file_id: str) -> str:
     api_key = random.choice(GEMINI_API_KEYS)
@@ -115,7 +129,7 @@ async def md_to_html(file_id: str) -> str:
     async with aiohttp.ClientSession() as session:
         async with session.post(url, json=payload) as resp:
             result = await resp.json()
-    html = _extract_html(result["candidates"][0]["content"]["parts"][0]["text"])
+    html = _inject_logo(_extract_html(result["candidates"][0]["content"]["parts"][0]["text"]), LOGO_URL)
     try:
         os.makedirs("output", exist_ok=True)
         with open(os.path.join("output", f"{file_id}.html"), "w", encoding="utf-8") as f:

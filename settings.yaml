@@ -6,6 +6,7 @@ scoring_mode: 'v2'
 # scoring_mode: 'v1'  # V1: 3 次 Gemini（OCR → scoring→.md → md_to_html→.html）
 # scoring_mode: 'v2'  # V2: 2 次 Gemini（OCR → scoring 直出 .html），合併 scoring + md_to_html
 max_output_tokens: 32768
+logo_url: 'https://arc.blossom-academy.uk/static/Kit/logo%20ver2.1-1_pdf.jpg'
 gemini_ocr_prompt: '將圖片中的英文作文識別出來，不要做任何的修改，不要添加其他語詞'
 gemini_audio_prompt: '將語音內容轉寫為文字，不要做任何的修改，不要添加其他語詞'
 line:
