@@ -1,11 +1,15 @@
 # LINE 英文作文 AI 評分系統：現況基線與擴充指南
 
 > 本文件依據目前 `line_webhook` 原始碼整理，用來描述「已完成且正在運作的系統」，並作為後續新增功能的共同基線。  
-> 文件日期：2026-08-06（已加入 V3 單次呼叫評分模式）
+> 文件日期：2026-08-06
+>
+> 對應原始碼：`main` 分支，commit `8a632b6`
+>
+> 目前啟用模式：V3 單次 Gemini 呼叫
 
 ## 1. 系統目的
 
-本系統把 LINE 官方帳號作為學生端入口，讓使用者直接上傳英文作文圖片。FastAPI 後端收到 LINE Webhook 後，從 LINE 下載圖片，依序使用 Gemini 完成 OCR 與作文評分，將結果儲存為 HTML 報告，再透過 LINE Flex Message 把 LIFF 報告入口推送給使用者。
+本系統把 LINE 官方帳號作為學生端入口，讓使用者直接上傳英文作文圖片。FastAPI 後端收到 LINE Webhook 後，從 LINE 下載圖片，再依設定的 V1、V2 或 V3 流程使用 Gemini 完成文字辨識、作文評分與 HTML 生成，最後透過 LINE Flex Message 把 LIFF 報告入口推送給使用者。目前正式設定為 V3，由 Gemini 在一次多模態呼叫中直接讀圖、評分並產生 HTML。
 
 使用者不需要離開 LINE，也不需要手動輸入作文內容，即可完成：
 
@@ -140,9 +144,9 @@ OCR 完成後，`is_english_essay()` 會檢查：
 
 ### 5.4 評分模式
 
-目前由 `settings.yaml` 的 `scoring_mode` 切換三種流程，預設為 `v2`。
+目前由 `settings.yaml` 的 `scoring_mode` 切換三種流程；原始碼目前設定為 `v3`。若設定值不是 `v1` 或 `v3`，現有 handler 會走 V2 分支。
 
-#### V3：單次呼叫（`scoring_mode: v3`）
+#### V3：目前啟用的單次呼叫流程（`scoring_mode: v3`）
 
 ```text
 圖片 → Gemini 單次呼叫直接讀圖（OCR + 評分 + HTML 一併完成）→ 輸出 HTML
@@ -153,8 +157,9 @@ OCR 完成後，`is_english_essay()` 會檢查：
 - 跳過 `ocr_image()` 與 `is_english_essay()`；非英文作文由模型輸出固定回退 HTML。
 - 最終寫入 `output/{uuid}.html`，不產生 Markdown 中間檔。
 - 最低延遲與 API 成本的路徑。
+- 即使模型判定不是英文作文，使用者仍會收到評分結果 Flex Message，並在 LIFF 中看到回退 HTML；這與 V1/V2 直接推送文字原因的行為不同。
 
-#### V2：目前預設流程
+#### V2：保留的兩次呼叫流程（`scoring_mode: v2`）
 
 ```text
 圖片 → Gemini OCR → 英文作文驗證 → Gemini 評分並直接輸出 HTML
@@ -224,6 +229,25 @@ output/{uuid}.html
 
 `handle_postback()` 已有事件入口，但函式目前為空，適合作為下一階段互動功能的擴充點。
 
+### 7.4 服務管理 CLI
+
+`menu.sh` 除了原有的互動式選單，現在也能直接接受命令列參數，方便人工維運、部署腳本或遠端操作：
+
+| 指令 | 行為 |
+|---|---|
+| `bash menu.sh start` | 背景啟動 FastAPI／Uvicorn 服務。 |
+| `bash menu.sh stop` | 停止 PID 檔記錄的服務。 |
+| `bash menu.sh restart` | 依序停止並重新啟動服務。 |
+| `bash menu.sh status` | 顯示執行狀態、PID 與 Port。 |
+| `bash menu.sh log` | 顯示 `hook.log` 最後 50 行。 |
+| `bash menu.sh follow` | 持續追蹤 `hook.log`。 |
+| `bash menu.sh clean` | 詢問確認後清除 Log。 |
+| `bash menu.sh clean -y` | 不詢問，直接清除 Log。 |
+| `bash menu.sh help` | 顯示 CLI 說明。 |
+| `bash menu.sh` | 不帶參數時開啟互動式選單。 |
+
+服務固定使用專案目錄下的 `bin/uvicorn`，監聽 Port `9000`，並以 `.hook.pid` 與 `hook.log` 保存程序及日誌資訊。
+
 ## 8. 設定與機密管理
 
 設定採兩層結構：
@@ -240,7 +264,7 @@ settings.local.yaml 機密設定，不納入版本控制
 | 設定 | 用途 |
 |---|---|
 | `llm_model` | Gemini 模型，目前設定為 `gemini-3.1-flash-lite`。 |
-| `scoring_mode` | 選擇 V1（3 次呼叫）、V2（2 次呼叫）或 V3（1 次呼叫）評分流程，預設 `v2`。 |
+| `scoring_mode` | 選擇 V1（3 次呼叫）、V2（2 次呼叫）或 V3（1 次呼叫）評分流程；目前設定為 `v3`。 |
 | `max_output_tokens` | 控制 Gemini 最大輸出，目前為 32768，避免 HTML 被截斷。 |
 | `logo_url` | 注入評分 HTML 的 Logo。 |
 | `gemini_ocr_prompt` | OCR 行為規格（V1/V2 使用）。 |
@@ -276,6 +300,8 @@ settings.local.yaml 機密設定，不納入版本控制
 8. **Flex Message 模板是共用 dict**：程式會直接改寫其中的 LIFF URI；後續增加更高併發或更多頻道時，宜改為每次 deep copy 後再填值。
 9. **Postback 尚未實作**：現有 Flex Message 中已有 Postback 按鈕，但目前點擊後沒有後端行為。
 10. **目前沒有自動化測試**：新增功能前宜先為簽章、作文判定、`liff.state` 解析與評分工作流程補測試。
+11. **V3 失敗時可能產生無效報告連結**：`score_essay_from_image()` 在 Gemini 回覆無有效欄位時只回傳錯誤字串，不會建立 HTML 檔；handler 目前仍會推送結果按鈕，使用者點擊後可能得到 404。
+12. **評分模式設定沒有白名單驗證**：除了明確的 `v1` 與 `v3`，其他字串目前都會落入 V2 分支；拼字錯誤不會在啟動時被發現。
 
 ## 11. 建議的功能擴充方向
 
@@ -332,13 +358,13 @@ settings.local.yaml 機密設定，不納入版本控制
 LINE 上傳圖片
 → FastAPI 驗證並接收 Webhook
 → 從 LINE 下載圖片
-→ [V1/V2] Gemini OCR → 英文作文格式檢查
-→ Gemini 作文評分
+→ [目前 V3] Gemini 直接讀圖、判定、評分並產生 HTML
+  或 [V1/V2] Gemini OCR → Python 作文格式檢查 → Gemini 評分
 → 產生並保存 HTML
 → LINE Push 評分結果
 → 使用者透過 LIFF 查看報告
 ```
 
-其中 `scoring_mode` 決定評分路徑：V1 共 3 次 Gemini 呼叫、V2 共 2 次（OCR + 評分直出 HTML）、V3 共 1 次（直接讀圖，同時完成 OCR、評分與 HTML 輸出，跳過 Python 作文格式檢查）。三種模式輸出結構相同，LIFF 報告頁不需區分模式。
+其中 `scoring_mode` 決定評分路徑：V1 共 3 次 Gemini 呼叫、V2 共 2 次（OCR + 評分直出 HTML）、目前啟用的 V3 共 1 次（直接讀圖，同時完成 OCR、評分與 HTML 輸出，跳過 Python 作文格式檢查）。三種模式輸出結構相同，LIFF 報告頁不需區分模式。
 
 這個版本已具備可實際使用的 MVP 流程。下一階段若要加入學生歷史、教師管理、計費或大量併發，核心工作會從「完成 AI 評分」轉向「身份、資料持久化、任務可靠性與可觀測性」。
