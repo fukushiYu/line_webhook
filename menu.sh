@@ -129,6 +129,11 @@ clean_log() {
         return
     fi
     local size=$(du -h "$LOG_FILE" | cut -f1)
+    if [ "$1" = "-y" ]; then
+        > "$LOG_FILE"
+        echo -e "${GREEN}✓ Log 已清除${NC}"
+        return
+    fi
     read -r -p "確定要清除 log？($size) [y/N]: " confirm
     if [[ "$confirm" =~ ^[Yy]$ ]]; then
         > "$LOG_FILE"
@@ -137,6 +142,46 @@ clean_log() {
         echo -e "${YELLOW}⚠ 已取消${NC}"
     fi
 }
+
+print_usage() {
+    echo "用法: bash $0 [指令]"
+    echo ""
+    echo "指令:"
+    echo "  start     啟動服務"
+    echo "  stop      停止服務"
+    echo "  restart   重啟服務"
+    echo "  log       顯示最後 50 行 Log"
+    echo "  follow    即時 Log (tail -f)"
+    echo "  clean     清除 Log（加 -y 跳過確認，如: clean -y）"
+    echo "  status    顯示服務狀態"
+    echo "  help      顯示此說明"
+    echo ""
+    echo "不帶指令執行 $0 即進入互動式選單。"
+}
+
+# ── CLI 模式：帶參數時直接執行，不進入選單 ──
+case "$1" in
+    start)   start_service ;;
+    stop)    stop_service ;;
+    restart) restart_service ;;
+    log)     show_log ;;
+    follow)  show_log_follow ;;
+    clean)   clean_log "$2" ;;
+    status)  get_status ;;
+    help|-h|--help) print_usage ;;
+    "")
+        # 無參數 → 進入互動式選單
+        ;;
+    *)
+        echo -e "${RED}未知參數: $1${NC}" >&2
+        echo ""
+        print_usage
+        exit 1
+        ;;
+esac
+
+# 有參數時執行完即結束
+[ -n "$1" ] && exit 0
 
 while true; do
     print_header
