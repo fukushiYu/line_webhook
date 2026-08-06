@@ -2,9 +2,10 @@
 gemini_api_key:
   - '請在 settings.local.yaml 中設定 API Key'
 llm_model: 'gemini-3.1-flash-lite'
-scoring_mode: 'v2'
+scoring_mode: 'v3'
 # scoring_mode: 'v1'  # V1: 3 次 Gemini（OCR → scoring→.md → md_to_html→.html）
 # scoring_mode: 'v2'  # V2: 2 次 Gemini（OCR → scoring 直出 .html），合併 scoring + md_to_html
+# scoring_mode: 'v3'  # V3: 1 次 Gemini（圖片 → OCR + 評分 + 直出 .html），全部合併為單次呼叫
 max_output_tokens: 32768
 logo_url: 'https://arc.blossom-academy.uk/static/Kit/logo%20ver2.1-1_pdf.jpg'
 gemini_ocr_prompt: '將圖片中的英文作文識別出來，不要做任何的修改，不要添加其他語詞'
@@ -152,5 +153,7 @@ flex_upload:
 elementary_prompt: '!include prompt/elementary_prompt.txt'
 
 elementary_html_prompt: '!include prompt/elementary_prompt_html.txt'
+
+elementary_html_direct_prompt: '!include prompt/elementary_prompt_html_direct.txt'
 
 MD_TO_HTML_PROMPT: '!include prompt/MD_TO_HTML_PROMPT.txt'

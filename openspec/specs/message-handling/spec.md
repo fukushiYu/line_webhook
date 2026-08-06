@@ -98,6 +98,14 @@
 - **WHEN** `SCORING_MODE` 非 `v1`（預設 `v2`）
 - **THEN** 系統呼叫 `score_essay_direct_html` 直接產出 `output/{id}.html`，並輸出單一階段耗時日誌（共 2 次 Gemini 呼叫）
 
+#### Scenario: 評分模式 v3
+- **WHEN** `SCORING_MODE` 為 `v3`
+- **THEN** 系統不執行 `ocr_image` 與 `is_english_essay`，改以圖片路徑直接呼叫 `score_essay_from_image` 產出 `output/{id}.html`（全程僅 1 次 Gemini 呼叫），並輸出 `[MODE] V3 ...` 耗時日誌
+
+#### Scenario: v3 推播評分結果
+- **WHEN** V3 評分完成
+- **THEN** 系統以 `push_message` 推播 `FLEX_GRADE` Flex Message，按鈕 URI 設為 `{channel_config['liff_uri']}?id={basename}`（與 V1/V2 相同）
+
 #### Scenario: 推播評分結果
 - **WHEN** 評分完成
 - **THEN** 系統以 `push_message` 推播 `FLEX_GRADE` Flex Message，按鈕 URI 設為 `{channel_config['liff_uri']}?id={basename}`

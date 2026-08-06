@@ -66,6 +66,26 @@
 - **WHEN** Gemini 回覆缺少有效欄位
 - **THEN** 系統回傳 `<p>無法評分</p>`
 
+### Requirement: 作文評分直出 HTML（V3 單次呼叫）
+
+系統 SHALL 提供 `score_essay_from_image(filepath, file_id)`，以圖片內嵌（base64）方式**單次**呼叫 Gemini，一次完成 OCR、評分與 HTML 輸出；回覆經 `_extract_html` 清理並套用 Logo 注入後寫入 `output/{file_id}.html`，跳過 OCR 文字與 `.md` 中間格式。
+
+#### Scenario: V3 成功寫入 HTML
+- **WHEN** 呼叫 `score_essay_from_image` 且 Gemini 回覆含有效文字
+- **THEN** 系統以 `_call_gemini` 將圖片以 `image/jpeg` 內嵌、以 V3 提示詞單次呼叫 Gemini，並以 `_extract_html` 清理後寫入 `output/{file_id}.html`（含 Logo 注入規則）
+
+#### Scenario: V3 解析失敗
+- **WHEN** Gemini 回覆缺少 `candidates`、`content` 或 `parts` 欄位
+- **THEN** 系統回傳 `<p>無法評分</p>`
+
+#### Scenario: V3 非英文作文回退
+- **WHEN** 圖片內容非英文作文（由模型依 V3 提示詞判斷）
+- **THEN** 系統依提示詞輸出固定回退 HTML，內容說明「這不是一篇英文作文」，並照常寫入 `output/{file_id}.html`
+
+#### Scenario: V3 Logo 注入
+- **WHEN** V3 模式產出評分報告 HTML
+- **THEN** 系統對產出的 HTML 套用與 V1/V2 相同的 `_inject_logo` Logo 注入規則
+
 ### Requirement: Markdown 轉 HTML（V1）
 
 系統 SHALL 提供 `md_to_html(file_id)`，讀取 `output/{file_id}.md` 後以 `MD_TO_HTML_PROMPT` 呼叫 Gemini，經 `_extract_html` 清理後寫入 `output/{file_id}.html`。

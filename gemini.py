@@ -2,7 +2,7 @@ import base64,os
 import random
 import re
 import aiohttp
-from config import GEMINI_API_KEYS, LLM_MODEL, GEMINI_OCR_PROMPT, GEMINI_AUDIO_PROMPT, ELEMENTARY_PROMPT, ELEMENTARY_HTML_PROMPT, MD_TO_HTML_PROMPT, MAX_OUTPUT_TOKENS, LOGO_URL
+from config import GEMINI_API_KEYS, LLM_MODEL, GEMINI_OCR_PROMPT, GEMINI_AUDIO_PROMPT, ELEMENTARY_PROMPT, ELEMENTARY_HTML_PROMPT, ELEMENTARY_HTML_DIRECT_PROMPT, MD_TO_HTML_PROMPT, MAX_OUTPUT_TOKENS, LOGO_URL
 
 # ── 通用 Gemini API 呼叫（多媒體內容：圖片/音訊 → base64 內嵌） ──
 async def _call_gemini(filepath: str, mime_type: str, prompt: str) -> str:
@@ -94,6 +94,21 @@ async def score_essay_direct_html(text: str, file_id: str) -> str:
             f.write(html)
     except (KeyError, IndexError):
         return "<p>無法評分</p>"
+
+# ── 英文作文評分（V3 模式）：單次 Gemini 呼叫，直接讀圖完成 OCR + 評分 + HTML ──
+# V3 模式：將 OCR、scoring、md_to_html 三者合併為一次 Gemini 呼叫。
+# 以 _call_gemini 將圖片 base64 內嵌，使用 elementary_prompt_html_direct.txt
+# （OCR 指示 + 評分規約 + HTML 輸出格式），回覆經 _extract_html 清理與 _inject_logo
+# 注入後直接寫入 output/{file_id}.html。非英文作文由模型依提示詞輸出固定回退 HTML。
+async def score_essay_from_image(filepath: str, file_id: str) -> str:
+    raw = await _call_gemini(filepath, "image/jpeg", ELEMENTARY_HTML_DIRECT_PROMPT)
+    if raw == "無法辨識內容":
+        return "<p>無法評分</p>"
+    html = _inject_logo(_extract_html(raw), LOGO_URL)
+    os.makedirs("output", exist_ok=True)
+    with open(os.path.join("output", f"{file_id}.html"), "w", encoding="utf-8") as f:
+        f.write(html)
+    return html
 
 # ── 從 Gemini 回覆中擷取第一組 DOCTYPE / html 標籤，移除 markdown 圍欄 ──
 def _extract_html(raw: str) -> str:

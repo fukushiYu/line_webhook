@@ -26,7 +26,7 @@ from config import (
     FLEX_GRADE,
     FLEX_WAIT,
 )
-from gemini import ocr_image, transcribe_audio, score_essay, score_essay_direct_html, md_to_html
+from gemini import ocr_image, transcribe_audio, score_essay, score_essay_direct_html, score_essay_from_image, md_to_html
 from english_essay import is_english_essay
 
 # ── 時區與每日上限 ──
@@ -154,36 +154,43 @@ async def handle_image_message(event: MessageEvent, channel_config: dict):
         with open(filepath, "wb") as f:
             f.write(content)
 
-        t_ocr = time.monotonic()
-        text = await ocr_image(filepath)
-        t_ocr_done = time.monotonic()
-        logging.info(f"[MODE] {SCORING_MODE.upper()} | ocr: {t_ocr_done-t_ocr:.3f}s")
-        ok, reason, cleaned = is_english_essay(text)
-        if not ok:
-            await line_bot_api.push_message(
-                PushMessageRequest(
-                    to=user_id,
-                    messages=[TextMessage(text=f"這不是一篇英文作文：{reason}")],
-                )
-            )
-            return
-
-        # ── 評分流程：依 SCORING_MODE 選擇 V1（3 次呼叫）或 V2（2 次呼叫） ──
+        # ── 評分流程：依 SCORING_MODE 選擇 V1（3 次呼叫）、V2（2 次呼叫）或 V3（1 次呼叫） ──
         # V1（原始流程）：score_essay → 存 .md → md_to_html → 存 .html
         # V2（最佳化流程）：score_essay_direct_html → 直存 .html（合併 scoring + HTML 轉換）
+        # V3（單次呼叫）：score_essay_from_image → 圖片直接 OCR + 評分 + 直存 .html
+        # V3 跳過 ocr_image 與 is_english_essay，非英文作文由模型依提示詞輸出固定回退 HTML。
         # 記錄每階段耗時，供效能比較。切換模式僅需修改 settings.yaml 的 scoring_mode。
-        if SCORING_MODE == "v1":
+        if SCORING_MODE == "v3":
             t0 = time.monotonic()
-            await score_essay(cleaned, basename)
+            await score_essay_from_image(filepath, basename)
             t1 = time.monotonic()
-            await md_to_html(basename)
-            t2 = time.monotonic()
-            logging.info(f"[MODE] V1 | score_essay: {t1-t0:.3f}s | md_to_html: {t2-t1:.3f}s | total: {t2-t0:.3f}s")
+            logging.info(f"[MODE] V3 | score_essay_from_image: {t1-t0:.3f}s")
         else:
-            t0 = time.monotonic()
-            await score_essay_direct_html(cleaned, basename)
-            t1 = time.monotonic()
-            logging.info(f"[MODE] V2 | score_essay_direct_html: {t1-t0:.3f}s")
+            t_ocr = time.monotonic()
+            text = await ocr_image(filepath)
+            t_ocr_done = time.monotonic()
+            logging.info(f"[MODE] {SCORING_MODE.upper()} | ocr: {t_ocr_done-t_ocr:.3f}s")
+            ok, reason, cleaned = is_english_essay(text)
+            if not ok:
+                await line_bot_api.push_message(
+                    PushMessageRequest(
+                        to=user_id,
+                        messages=[TextMessage(text=f"這不是一篇英文作文：{reason}")],
+                    )
+                )
+                return
+            if SCORING_MODE == "v1":
+                t0 = time.monotonic()
+                await score_essay(cleaned, basename)
+                t1 = time.monotonic()
+                await md_to_html(basename)
+                t2 = time.monotonic()
+                logging.info(f"[MODE] V1 | score_essay: {t1-t0:.3f}s | md_to_html: {t2-t1:.3f}s | total: {t2-t0:.3f}s")
+            else:
+                t0 = time.monotonic()
+                await score_essay_direct_html(cleaned, basename)
+                t1 = time.monotonic()
+                logging.info(f"[MODE] V2 | score_essay_direct_html: {t1-t0:.3f}s")
         flex_dict = FLEX_GRADE
         flex_dict["body"]["contents"][1]["action"]["uri"] = f"{channel_config['liff_uri']}?id={basename}"
         await line_bot_api.push_message(

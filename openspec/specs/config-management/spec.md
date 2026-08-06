@@ -44,7 +44,7 @@
 
 ### Requirement: 匯出共用設定常數
 
-系統 SHALL 匯出以下設定常數供各模組使用：`LINE_CONFIGS`、`FLEX_WELCOME`、`FLEX_UPLOAD`、`FLEX_GRADE`、`FLEX_WAIT`、`GEMINI_API_KEYS`、`LLM_MODEL`、`SCORING_MODE`、`MAX_OUTPUT_TOKENS`、`GEMINI_OCR_PROMPT`、`GEMINI_AUDIO_PROMPT`、`ELEMENTARY_PROMPT`、`ELEMENTARY_HTML_PROMPT`、`MD_TO_HTML_PROMPT`。
+系統 SHALL 匯出以下設定常數供各模組使用：`LINE_CONFIGS`、`FLEX_WELCOME`、`FLEX_UPLOAD`、`FLEX_GRADE`、`FLEX_WAIT`、`GEMINI_API_KEYS`、`LLM_MODEL`、`SCORING_MODE`、`MAX_OUTPUT_TOKENS`、`GEMINI_OCR_PROMPT`、`GEMINI_AUDIO_PROMPT`、`ELEMENTARY_PROMPT`、`ELEMENTARY_HTML_PROMPT`、`ELEMENTARY_HTML_DIRECT_PROMPT`、`MD_TO_HTML_PROMPT`。
 
 #### Scenario: 頻道設定陣列
 - **WHEN** 系統匯出 `LINE_CONFIGS`
@@ -59,8 +59,8 @@
 - **THEN** 系統將 `MAX_OUTPUT_TOKENS` 設為 `8192`
 
 #### Scenario: 提示詞由外部檔案載入
-- **WHEN** 系統匯出 `ELEMENTARY_PROMPT`、`ELEMENTARY_HTML_PROMPT`、`MD_TO_HTML_PROMPT`
-- **THEN** 其值分別為 `prompt/elementary_prompt.txt`、`prompt/elementary_prompt_html.txt`、`prompt/MD_TO_HTML_PROMPT.txt` 的檔案內容（經由 `_resolve` 處理）
+- **WHEN** 系統匯出 `ELEMENTARY_PROMPT`、`ELEMENTARY_HTML_PROMPT`、`ELEMENTARY_HTML_DIRECT_PROMPT`、`MD_TO_HTML_PROMPT`
+- **THEN** 其值分別為 `prompt/elementary_prompt.txt`、`prompt/elementary_prompt_html.txt`、`prompt/elementary_prompt_html_direct.txt`、`prompt/MD_TO_HTML_PROMPT.txt` 的檔案內容（經由 `_resolve` 處理）
 
 ### Requirement: Logo 網址參數
 
@@ -73,3 +73,15 @@
 #### Scenario: 未提供 logo_url
 - **WHEN** `settings.yaml` 未提供 `logo_url`
 - **THEN** 系統將 `LOGO_URL` 設為空字串，不產生錯誤
+
+### Requirement: V3 直出 HTML 提示詞載入
+
+系統 SHALL 從設定讀取 `elementary_html_direct_prompt`（以 `!include` 引用 `prompt/elementary_prompt_html_direct.txt`）並匯出為 `ELEMENTARY_HTML_DIRECT_PROMPT` 常數，供 V3 評分模式使用。
+
+#### Scenario: 讀取 V3 提示詞
+- **WHEN** `settings.yaml` 提供 `elementary_html_direct_prompt`（`!include` 語法）
+- **THEN** 系統以 `_resolve` 讀取 `prompt/elementary_prompt_html_direct.txt` 內容並匯出為 `ELEMENTARY_HTML_DIRECT_PROMPT`
+
+#### Scenario: 未提供 V3 提示詞
+- **WHEN** `settings.yaml` 未提供 `elementary_html_direct_prompt`
+- **THEN** 系統於匯入 `config.py` 時拋出 KeyError（V3 模式不可用，屬設定缺失錯誤，不靜默使用其他提示詞）
