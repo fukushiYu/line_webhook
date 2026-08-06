@@ -36,11 +36,16 @@ sequenceDiagram
     Handler->>LINE: 依 message_id 下載圖片
     LINE-->>Handler: 圖片二進位內容
     Handler->>Disk: 儲存 images/{uuid}.jpg
-    Handler->>Gemini: OCR：圖片轉原始英文文字
-    Gemini-->>Handler: OCR 文字
-    Handler->>Handler: 驗證是否像英文作文
-    Handler->>Gemini: 評分並產生 HTML
-    Gemini-->>Handler: 完整 HTML 報告
+    alt V3 模式（單次呼叫）
+        Handler->>Gemini: 讀圖 + 評分 + 產生 HTML（共 1 次呼叫）
+        Gemini-->>Handler: 完整 HTML 報告（非英文作文時為回退 HTML）
+    else V1 / V2 模式
+        Handler->>Gemini: OCR：圖片轉原始英文文字
+        Gemini-->>Handler: OCR 文字
+        Handler->>Handler: 驗證是否像英文作文
+        Handler->>Gemini: 評分並產生 HTML（V2 直出 / V1 先出 Markdown 再轉）
+        Gemini-->>Handler: 完整 HTML 報告
+    end
     Handler->>Disk: 儲存 output/{uuid}.html
     Handler->>User: Push「評分結果」Flex Message
     User->>LIFF: 點擊 liff_uri?id={uuid}
