@@ -1,7 +1,7 @@
 # LINE 英文作文 AI 評分系統：現況基線與擴充指南
 
 > 本文件依據目前 `line_webhook` 原始碼整理，用來描述「已完成且正在運作的系統」，並作為後續新增功能的共同基線。  
-> 文件日期：2026-08-05
+> 文件日期：2026-08-06（已加入 V3 單次呼叫評分模式）
 
 ## 1. 系統目的
 
@@ -56,7 +56,7 @@ sequenceDiagram
 |---|---|
 | `main.py` | 建立 FastAPI、接收 LINE Webhook、驗證頻道與簽章、分派事件、提供評分頁與 CSS。 |
 | `handlers.py` | 處理文字、圖片、音訊與 Postback 事件；圖片 OCR、評分及 LINE 回覆的主要流程位於此處。 |
-| `gemini.py` | 封裝 Gemini REST API 呼叫，包含圖片 OCR、音訊轉寫、作文評分、直接產生 HTML，以及 V1 的 Markdown 轉 HTML。 |
+| `gemini.py` | 封裝 Gemini REST API 呼叫，包含圖片 OCR、音訊轉寫、作文評分、直接產生 HTML、V3 的讀圖單次評分，以及 V1 的 Markdown 轉 HTML。 |
 | `english_essay.py` | 依字數、句數與句首大寫比例，初步判斷 OCR 結果是否為英文作文。 |
 | `line_utils.py` | 執行 LINE Webhook HMAC-SHA256 簽章驗證，以及建立 LINE Messaging API client。 |
 | `config.py` | 合併公開與機密設定、載入 Prompt，並匯出程式使用的設定常數。 |
@@ -64,7 +64,7 @@ sequenceDiagram
 | `settings.local.yaml` | 保存 Gemini API Key、LINE Channel Secret、Access Token 等機密資料；不納入 Git。 |
 | `prompt/` | 保存 OCR、評分與 HTML 輸出規格所使用的提示詞。 |
 | `images/` | 保存從 LINE 下載的作文圖片，檔名為 UUID。 |
-| `output/` | 保存評分結果；V2 為 `.html`，V1 另有中間 `.md`。 |
+| `output/` | 保存評分結果；V2/V3 為 `.html`，V1 另有中間 `.md`。 |
 | `static/scorepage.html` | LIFF 沒有帶入有效報告 ID 時顯示的預設頁面。 |
 
 ## 4. Webhook 與事件分派
@@ -118,6 +118,8 @@ FastAPI 先用該 Channel 的 Secret 驗證 `X-Line-Signature`，驗證通過後
 
 Gemini API Key 來自 `GEMINI_API_KEYS`，每次呼叫以 `random.choice()` 隨機選取一組。
 
+> **注意**：此步驟僅在 V1 / V2 模式執行。V3 模式將 OCR 併入評分呼叫，由模型直接讀圖。
+
 ### 5.3 英文作文初步驗證
 
 OCR 完成後，`is_english_essay()` 會檢查：
@@ -129,9 +131,23 @@ OCR 完成後，`is_english_essay()` 會檢查：
 
 若不符合條件，系統不進行評分，改用 Push Message 告知使用者原因。
 
+> **注意**：此 Python 檢查依賴 OCR 中間文字，僅在 V1 / V2 模式執行。V3 模式沒有獨立 OCR 文字，改由模型依 V3 提示詞判斷，非英文作文時直接輸出「這不是一篇英文作文」的回退 HTML。
+
 ### 5.4 評分模式
 
-目前由 `settings.yaml` 的 `scoring_mode` 切換兩種流程，預設為 `v2`。
+目前由 `settings.yaml` 的 `scoring_mode` 切換三種流程，預設為 `v2`。
+
+#### V3：單次呼叫（`scoring_mode: v3`）
+
+```text
+圖片 → Gemini 單次呼叫直接讀圖（OCR + 評分 + HTML 一併完成）→ 輸出 HTML
+```
+
+- Gemini 呼叫共 **1 次**。
+- `score_essay_from_image()` 以圖片 Base64 內嵌呼叫 Gemini，使用 `prompt/elementary_prompt_html_direct.txt`（OCR 指示 + 評分規約 + HTML 輸出格式合併）。
+- 跳過 `ocr_image()` 與 `is_english_essay()`；非英文作文由模型輸出固定回退 HTML。
+- 最終寫入 `output/{uuid}.html`，不產生 Markdown 中間檔。
+- 最低延遲與 API 成本的路徑。
 
 #### V2：目前預設流程
 
@@ -155,7 +171,7 @@ OCR 完成後，`is_english_essay()` 會檢查：
 - `score_essay()` 先寫入 `output/{uuid}.md`。
 - `md_to_html()` 再將 Markdown 轉為 `output/{uuid}.html`。
 
-兩種模式輸出的 HTML 都會先移除 Gemini 可能附加的 Markdown code fence，再依 `logo_url` 注入報告 Logo。
+三種模式輸出的 HTML 都會先移除 Gemini 可能附加的 Markdown code fence，再依 `logo_url` 注入報告 Logo。
 
 ## 6. HTML 報告與 LIFF 傳遞
 
@@ -219,12 +235,13 @@ settings.local.yaml 機密設定，不納入版本控制
 | 設定 | 用途 |
 |---|---|
 | `llm_model` | Gemini 模型，目前設定為 `gemini-3.1-flash-lite`。 |
-| `scoring_mode` | 選擇 V1 或 V2 評分流程。 |
+| `scoring_mode` | 選擇 V1（3 次呼叫）、V2（2 次呼叫）或 V3（1 次呼叫）評分流程，預設 `v2`。 |
 | `max_output_tokens` | 控制 Gemini 最大輸出，目前為 32768，避免 HTML 被截斷。 |
 | `logo_url` | 注入評分 HTML 的 Logo。 |
-| `gemini_ocr_prompt` | OCR 行為規格。 |
+| `gemini_ocr_prompt` | OCR 行為規格（V1/V2 使用）。 |
 | `elementary_prompt` | V1 評分規格。 |
 | `elementary_html_prompt` | V2 評分及 HTML 輸出規格。 |
+| `elementary_html_direct_prompt` | V3 直接讀圖、評分及 HTML 輸出規格。 |
 | `MD_TO_HTML_PROMPT` | V1 的 Markdown 轉 HTML 規格。 |
 
 ## 9. 目前資料保存方式
@@ -238,7 +255,7 @@ settings.local.yaml 機密設定，不納入版本控制
 | 原始作文圖片 | `images/{uuid}.jpg` | 持續保留，除非人工清理 |
 | 音訊 | `audios/{uuid}.{ext}` | 持續保留，除非人工清理 |
 | 評分報告 | `output/{uuid}.html` | 持續保留，除非人工清理 |
-| V1 中間結果 | `output/{uuid}.md` | 持續保留，除非人工清理 |
+| V1 中間結果 | `output/{uuid}.md` | 持續保留，除非人工清理（僅 V1 模式產生） |
 
 ## 10. 後續擴充時應注意的現況
 
@@ -310,12 +327,13 @@ settings.local.yaml 機密設定，不納入版本控制
 LINE 上傳圖片
 → FastAPI 驗證並接收 Webhook
 → 從 LINE 下載圖片
-→ Gemini OCR
-→ 英文作文格式檢查
+→ [V1/V2] Gemini OCR → 英文作文格式檢查
 → Gemini 作文評分
 → 產生並保存 HTML
 → LINE Push 評分結果
 → 使用者透過 LIFF 查看報告
 ```
+
+其中 `scoring_mode` 決定評分路徑：V1 共 3 次 Gemini 呼叫、V2 共 2 次（OCR + 評分直出 HTML）、V3 共 1 次（直接讀圖，同時完成 OCR、評分與 HTML 輸出，跳過 Python 作文格式檢查）。三種模式輸出結構相同，LIFF 報告頁不需區分模式。
 
 這個版本已具備可實際使用的 MVP 流程。下一階段若要加入學生歷史、教師管理、計費或大量併發，核心工作會從「完成 AI 評分」轉向「身份、資料持久化、任務可靠性與可觀測性」。
