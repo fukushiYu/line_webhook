@@ -137,12 +137,13 @@ elementary_prompt: '!include prompt/elementary_prompt.txt'
 | `FLEX_WELCOME` / `FLEX_UPLOAD` / `FLEX_GRADE` / `FLEX_WAIT` | Flex Message 模板（dict） |
 | `GEMINI_API_KEYS` | Gemini API Key 陣列（可多個輪流使用） |
 | `LLM_MODEL` | Gemini 模型名稱 |
-| `SCORING_MODE` | 評分模式（`v1` = 3 次呼叫 / `v2` = 2 次呼叫，預設 `v2`，設定檔可切換） |
+| `SCORING_MODE` | 評分模式（`v1` = 3 次呼叫 / `v2` = 2 次呼叫 / `v3` = 1 次呼叫，預設 `v2`，設定檔可切換） |
 | `MAX_OUTPUT_TOKENS` | Gemini API 輸出 token 上限（程式預設 8192，`settings.yaml` 目前設 32768 防 HTML 截斷） |
 | `GEMINI_OCR_PROMPT` | OCR 用的 System Prompt |
 | `GEMINI_AUDIO_PROMPT` | 語音辨識用的 System Prompt |
 | `ELEMENTARY_PROMPT` | 評分作文用的 System Prompt（V1，透過 `_resolve` 載入） |
 | `ELEMENTARY_HTML_PROMPT` | 評分 + 直出 HTML 用的 System Prompt（V2，透過 `_resolve` 載入） |
+| `ELEMENTARY_HTML_DIRECT_PROMPT` | 直接讀圖 + 評分 + 直出 HTML 用的 System Prompt（V3，透過 `_resolve` 載入） |
 | `MD_TO_HTML_PROMPT` | Markdown 轉 HTML 用的 System Prompt（V1，透過 `_resolve` 載入） |
 
 > **設計模式**：所有重要的字串和模板集中在 YAML，修改行為不需要改程式碼，改 YAML 就好。機密與公開設定分離，避免 Token 外洩。
@@ -208,6 +209,8 @@ elementary_prompt: '!include prompt/elementary_prompt.txt'
   │     └─ 不合格 → 推播錯誤文字訊息（push_message），結束
   │
   ├─ 依 SCORING_MODE 分流（settings.yaml 的 scoring_mode 切換）：
+  │     ├─ v3：score_essay_from_image → 直接讀圖單次完成 OCR + 評分 + 產出 output/{uuid}.html（共 1 次呼叫）
+  │     │      （跳過 ocr_image / is_english_essay，非作文由模型輸出回退 HTML）
   │     ├─ v1：score_essay → 產出 output/{uuid}.md
   │     │      → md_to_html → 產出 output/{uuid}.html（共 3 次 Gemini 呼叫）
   │     └─ v2：score_essay_direct_html → 直接產出 output/{uuid}.html（共 2 次呼叫）
@@ -287,6 +290,7 @@ def is_english_essay(text: str) -> tuple[bool, str, str]:
 | `transcribe_audio(filepath, mime_type)` | `_call_gemini(..., mime_type, GEMINI_AUDIO_PROMPT)` | 音訊 → 文字 |
 | `score_essay(text, file_id)` | `_call_gemini_text(ELEMENTARY_PROMPT, text, file_id)` | 作文評分（V1）→ 寫入 `.md` |
 | `score_essay_direct_html(text, file_id)` | 直接呼叫 Gemini（`ELEMENTARY_HTML_PROMPT`）+ `_extract_html()` | 作文評分 + 直出 HTML（V2）→ 寫入 `.html`，跳過 `.md` 中間格式 |
+| `score_essay_from_image(filepath, file_id)` | `_call_gemini(..., "image/jpeg", ELEMENTARY_HTML_DIRECT_PROMPT)` + `_extract_html()` + `_inject_logo()` | 直接讀圖單次完成 OCR + 評分 + 直出 HTML（V3）→ 寫入 `.html`，跳過 OCR 文字與 `.md`；非作文時輸出回退 HTML |
 | `md_to_html(file_id)` | 直接呼叫 Gemini + `_extract_html()` | `.md` → `.html`（V1 使用） |
 
 #### `_extract_html(raw)` 的特殊處理
@@ -351,6 +355,12 @@ main.py:webhook()
         │
         ├─ 依 SCORING_MODE 分流（v2 預設）
         │     │
+        │     ├─ v3（1 次呼叫）：
+        │     │   gemini.score_essay_from_image(filepath, basename)
+        │     │     └─ Gemini API（ELEMENTARY_HTML_DIRECT_PROMPT，圖片內嵌）─── OCR + 評分 + 直出 HTML
+        │     │          └─ _extract_html() 清理 + _inject_logo() 後寫入 output/{basename}.html
+        │     │            （跳過 ocr_image / is_english_essay，非作文由模型輸出回退 HTML）
+        │     │
         │     ├─ v2（2 次呼叫）：
         │     │   gemini.score_essay_direct_html(cleaned, basename)
         │     │     └─ Gemini API（ELEMENTARY_HTML_PROMPT）─── 評分 + 直出 HTML
@@ -385,9 +395,9 @@ main.py:webhook()
 |---|---|---|
 | 處理新的訊息類型（如影片） | `main.py` + `handlers.py` | `handle_image_message` / `handle_audio_message` |
 | 加新的文字指令 | `handlers.py` 的 `handle_message` | `if lower_text == "xxx"` |
-| 用 Gemini 做不同的事 | `gemini.py` | `ocr_image` / `score_essay` / `score_essay_direct_html` 模式 |
+| 用 Gemini 做不同的事 | `gemini.py` | `ocr_image` / `score_essay` / `score_essay_direct_html` / `score_essay_from_image` 模式 |
 | 改評分規則 | `english_essay.py` | `is_english_essay` |
-| 切換評分流程 V1 / V2 | `settings.yaml` | 改 `scoring_mode: v1` / `v2`（重啟服務） |
+| 切換評分流程 V1 / V2 / V3 | `settings.yaml` | 改 `scoring_mode: v1` / `v2` / `v3`（重啟服務） |
 | 新增設定值 | `config.py` + `settings.yaml` | 現有變數模式 |
 | 加新的 HTTP 路由 | `main.py` | `@app.get/post` |
 | 新增 LINE 頻道 | `settings.yaml` + `settings.local.yaml` | 擴充 `line` 陣列即可 |

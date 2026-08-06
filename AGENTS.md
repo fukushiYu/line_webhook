@@ -12,7 +12,7 @@
 - **Entrypoint**: `main.py` — FastAPI app exposing `POST /webhook/line/{channel_idx}`.
 - **Multi-channel**: `channel_idx` indexes into `LINE_CONFIGS` array from `config.py` (derived from `settings.yaml` `line:` list). Each channel has its own `channel_secret`, `channel_access_token`, `admin`, `admin_prefix`, `liff_uri`, `rich_menu_id`.
 - **Image processing** (core feature): runs as `asyncio.create_task` (non-blocking). Text messages and postbacks are synchronous (`await`).
-- **Scoring modes**: `scoring_mode: v2` (default, 2 Gemini calls: OCR → direct HTML) or `v1` (3 calls: OCR → scoring .md → md_to_html). Set in `settings.yaml`.
+- **Scoring modes**: `scoring_mode: v3` (1 Gemini call: image → direct HTML, skips OCR/essay-detection, non-essay handled by model) or `v2` (default, 2 Gemini calls: OCR → direct HTML) or `v1` (3 calls: OCR → scoring .md → md_to_html). Set in `settings.yaml`.
 - **Gemini keys**: `GEMINI_API_KEYS` is an array; one is chosen at random per call (simple round-robin via `random.choice`).
 
 ## Important conventions

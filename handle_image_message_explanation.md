@@ -114,7 +114,7 @@ with open(filepath, "wb") as f:
 - 以 UUID 作為檔案名稱，存到 `images/` 資料夾
 - **要點**：之後的進度訊息都只能使用 `push_message`（因為 reply_token 已用畢）
 
-### 5. OCR 擷取文字 + 計時記錄（L157-159）
+### 5. OCR 擷取文字 + 計時記錄（L169-172，僅 V1 / V2 模式）
 
 ```python
 t_ocr = time.monotonic()
@@ -125,8 +125,9 @@ logging.info(f"[MODE] {SCORING_MODE.upper()} | ocr: {t_ocr_done-t_ocr:.3f}s")
 
 - 呼叫 `gemini.py` 的 `ocr_image`（送給 Gemini Vision API 做圖片文字辨識）
 - 用 `time.monotonic()` 計時並輸出 log，作為 V1/V2 模式效能比較的依據
+- **注意**：此步驟位於 `else`（非 v3）分支內。V3 模式跳過 OCR，改由 `score_essay_from_image` 在單次呼叫中直接讀圖。
 
-### 6. 判斷是否為英文作文（L161-169）
+### 6. 判斷是否為英文作文（L173-181，僅 V1 / V2 模式）
 
 ```python
 ok, reason, cleaned = is_english_essay(text)
@@ -145,22 +146,42 @@ if not ok:
   - 是否達到一定字數（30 詞）／句子數（2 句）／大寫開頭比例（50%）
 - 如果不符合條件 → `push_message` 推播錯誤訊息給使用者
 - **注意**：這裡使用 `push_message` 而非 `reply_message`，因為 `reply_token` 已經在步驟 4 用掉了
+- **注意**：V3 模式沒有 OCR 中間文字，此 Python 檢測不適用；非英文作文改由模型依 V3 提示詞自行判斷並輸出「這不是一篇英文作文」的回退 HTML。
 
-### 7. 評分（依 SCORING_MODE 分支）（L175-186）
+### 7. 評分（依 SCORING_MODE 分支）（L163-193）
 
 ```python
-if SCORING_MODE == "v1":
+if SCORING_MODE == "v3":
     t0 = time.monotonic()
-    await score_essay(cleaned, basename)
+    await score_essay_from_image(filepath, basename)
     t1 = time.monotonic()
-    await md_to_html(basename)
-    t2 = time.monotonic()
-    logging.info(f"[MODE] V1 | score_essay: {t1-t0:.3f}s | md_to_html: {t2-t1:.3f}s | total: {t2-t0:.3f}s")
+    logging.info(f"[MODE] V3 | score_essay_from_image: {t1-t0:.3f}s")
 else:
-    t0 = time.monotonic()
-    await score_essay_direct_html(cleaned, basename)
-    t1 = time.monotonic()
-    logging.info(f"[MODE] V2 | score_essay_direct_html: {t1-t0:.3f}s")
+    t_ocr = time.monotonic()
+    text = await ocr_image(filepath)
+    t_ocr_done = time.monotonic()
+    logging.info(f"[MODE] {SCORING_MODE.upper()} | ocr: {t_ocr_done-t_ocr:.3f}s")
+    ok, reason, cleaned = is_english_essay(text)
+    if not ok:
+        await line_bot_api.push_message(
+            PushMessageRequest(
+                to=user_id,
+                messages=[TextMessage(text=f"這不是一篇英文作文：{reason}")],
+            )
+        )
+        return
+    if SCORING_MODE == "v1":
+        t0 = time.monotonic()
+        await score_essay(cleaned, basename)
+        t1 = time.monotonic()
+        await md_to_html(basename)
+        t2 = time.monotonic()
+        logging.info(f"[MODE] V1 | score_essay: {t1-t0:.3f}s | md_to_html: {t2-t1:.3f}s | total: {t2-t0:.3f}s")
+    else:
+        t0 = time.monotonic()
+        await score_essay_direct_html(cleaned, basename)
+        t1 = time.monotonic()
+        logging.info(f"[MODE] V2 | score_essay_direct_html: {t1-t0:.3f}s")
 ```
 
 由 `settings.yaml` 的 `scoring_mode` 控制評分流徑：
@@ -169,10 +190,12 @@ else:
 |------|----------------|------|----------|
 | **V1** | 3 次（OCR → scoring → md_to_html） | `score_essay` 寫入 `.md` → `md_to_html` 讀 `.md` 再轉 `.html` | `output/{uuid}.md` + `output/{uuid}.html` |
 | **V2** | 2 次（OCR → scoring 直出 HTML） | `score_essay_direct_html` 一次完成評分 + HTML 轉換（prompt 合併評分規約與 HTML 輸出格式），跳過中間 `.md` | `output/{uuid}.html` 直接 |
+| **V3** | 1 次（讀圖 → 評分 → 直出 HTML） | `score_essay_from_image` 以圖片內嵌單次呼叫完成 OCR + 評分 + HTML 轉換（prompt 合併 OCR 指示 + 評分規約 + HTML 輸出格式），跳過 OCR 文字與 `.md`；非英文作文由模型輸出回退 HTML | `output/{uuid}.html` 直接 |
 
 - V1 的 `score_essay`：呼叫 `_call_gemini_text` → 寫入 `output/{uuid}.md`
 - V1 的 `md_to_html`：讀取 `.md` → 呼叫 Gemini → 擷取 HTML → 寫入 `output/{uuid}.html`
 - V2 的 `score_essay_direct_html`：呼叫 Gemini（`ELEMENTARY_HTML_PROMPT`）→ `_extract_html` 擷取 → 直接寫入 `output/{uuid}.html`
+- V3 的 `score_essay_from_image`：呼叫 `_call_gemini`（`ELEMENTARY_HTML_DIRECT_PROMPT`，圖片 base64 內嵌）→ `_extract_html` 擷取 + `_inject_logo` 注入 → 直接寫入 `output/{uuid}.html`
 
 ### 8. 推播 Flex Message 結果連結（L187-194）
 
@@ -215,7 +238,7 @@ finally:
 | 重疊處理保護 | 無 | `_processing_users` + `_state_lock` |
 | 每日用量限制 | 無 | `_user_daily_usage` + `_usage_lock`，每日 10 次 |
 | 回覆方式 | 全部用 `reply_message` | 先用 reply 回「請稍候」，後續用 `push_message` |
-| 評分流徑 | 固定 V1（3 次 Gemini） | V1/V2 可切換（`settings.yaml` 設定 `scoring_mode`） |
+| 評分流徑 | 固定 V1（3 次 Gemini） | V1/V2/V3 可切換（`settings.yaml` 設定 `scoring_mode`） |
 | API 客戶端建立 | 共用全域 `configuration` | 每次以 `channel_config` 建立，用完 close |
 | 日誌 | 無 | `time.monotonic()` 計時 + `logging.info` 輸出各階段耗時 |
 | 錯誤處理 | 無 `try/finally` | `try/finally` 確保 cleanup + api_client close |
@@ -232,7 +255,7 @@ finally:
 | **條件過濾** | `is_group and user_id != channel_config["admin"]: return` | 群組內只讓管理員觸發，個人不限制 |
 | **回覆結果** | 先 `reply_message` → 後續 `push_message` | reply_token 只能用一次，之後必須 push |
 | **狀態管理** | `_processing_users` + `_user_daily_usage` + Lock | 用 `asyncio.Lock` 保護共享狀態，確保執行緒安全 |
-| **模式切換** | `settings.yaml` 的 `scoring_mode: v1 / v2` | 改 YAML 即可切換，不須改程式碼 |
+| **模式切換** | `settings.yaml` 的 `scoring_mode: v1 / v2 / v3` | 改 YAML 即可切換，不須改程式碼 |
 | **連線清理** | `finally` 中 `api_client.close()` | `AsyncApiClient` 用完須關閉，否則連線洩漏 |
 
 ---

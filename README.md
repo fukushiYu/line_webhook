@@ -34,10 +34,10 @@
 | 功能 | 說明 |
 |------|------|
 | **文字指令** | 回應 `grade` / `welcome` / `upload` / `menu` 等關鍵字，顯示對應的 Flex Message |
-| **圖片 OCR + 評分** | 上傳圖片 → 辨識英文作文 → Gemini 評分 → 輸出評分報告（支援 V1/V2 雙模式） |
+| **圖片 OCR + 評分** | 上傳圖片 → 辨識英文作文 → Gemini 評分 → 輸出評分報告（支援 V1/V2/V3 三種模式） |
 | **語音轉寫** | 上傳語音訊息 → 透過 Gemini API 轉寫為文字 |
-| **英文作文檢測** | `is_english_essay()` 判斷 OCR 結果是否為英文作文，非英文作文不回傳評分 |
-| **Markdown → HTML** | V1 模式：評分結果經 Gemini 轉為卡片式 HTML；V2 模式：評分時直接輸出 HTML |
+| **英文作文檢測** | `is_english_essay()` 判斷 OCR 結果是否為英文作文，非英文作文不回傳評分（V3 由模型自行判斷並輸出回退 HTML） |
+| **Markdown → HTML** | V1 模式：評分結果經 Gemini 轉為卡片式 HTML；V2 模式：評分時直接輸出 HTML；V3 模式：單次呼叫直接讀圖輸出 HTML |
 | **LIFF 評分頁** | `GET /webhook/scorepage?liff.state=?id=<uuid>` 回傳對應的 HTML 評分報告（LINE LIFF 自動傳入 `liff.state`） |
 | **群組管理** | 僅管理員可使用 `admin_prefix` 前綴（如 `@小英` / `@ako`，依頻道設定）觸發指令 |
 | **Rich Menu** | 輸入 `menu` 即可連結特殊圖文選單 |
@@ -56,11 +56,12 @@ hook/
 ├── gemini.py              # Gemini API 呼叫封裝 (OCR / 轉寫 / 評分 / MD→HTML)
 ├── english_essay.py       # 英文作文檢測工具
 ├── style.css              # 評分報告樣式（由 /webhook/style.css 提供）
-├── menu.sh                # 服務管理腳本（啟動/停止/查看 Log）
+├── menu.sh                # 服務管理腳本（啟動/停止/查看 Log，支援互動選單與 CLI 指令）
 ├── settings.yaml          # 公開設定（Flex 模板、提示詞、模型名稱、評分模式、非機密參數，可上傳 GitHub）
 ├── prompt/                # 提示詞模板（從 settings.yaml 抽離，以 !include 載入）
 │   ├── elementary_prompt.txt
-│   ├── elementary_prompt_html.txt   # V2 模式：合併評分規約 + HTML 輸出格式
+│   ├── elementary_prompt_html.txt            # V2 模式：合併評分規約 + HTML 輸出格式
+│   ├── elementary_prompt_html_direct.txt     # V3 模式：OCR 指示 + 評分規約 + HTML 輸出格式
 │   └── MD_TO_HTML_PROMPT.txt
 ├── settings.local.yaml    # 機密設定（API Key、Token、Secret，已 .gitignore）
 ├── requirements.txt       # Python 依賴
@@ -90,7 +91,7 @@ main.py             路由層         HTTP 請求分派、簽章驗證
 
 - **config.py** — 一切設定的單一來源。匯出 `LINE_CONFIGS` 陣列（頻道專屬設定）、Flex Message 模板、Gemini 金鑰與提示詞
 - **line_utils.py** — 與 LINE Platform 的通訊基礎（簽章驗證、API Client），無全域 `Configuration` 實例，改由呼叫端傳入 `channel_config`
-- **gemini.py** — Gemini API 呼叫封裝：`ocr_image`、`transcribe_audio`、`score_essay`、`score_essay_direct_html`、`md_to_html`
+- **gemini.py** — Gemini API 呼叫封裝：`ocr_image`、`transcribe_audio`、`score_essay`、`score_essay_direct_html`、`score_essay_from_image`、`md_to_html`
 - **handlers.py** — 各類事件的處理邏輯，所有函式接收 `channel_config: dict` 參數以支援多頻道
 - **english_essay.py** — 判斷字數、句數、大寫比例，回傳 `(bool, reason, cleaned_text)`
 - **main.py** — 最小化 glue code，路由 `/webhook/line/{channel_idx}` 將對應頻道設定傳入 handler
@@ -129,6 +130,22 @@ main.py             路由層         HTTP 請求分派、簽章驗證
 
 V2 將 scoring 與 md_to_html 合併為一次 Gemini 呼叫，由 `prompt/elementary_prompt_html.txt` 直接輸出 HTML，跳過 .md 中間格式，節省一次 API 呼叫與檔案 I/O。
 
+### V3（單次呼叫，`scoring_mode: v3`，1 次 Gemini 呼叫）
+
+```
+使用者上傳圖片
+    → POST /webhook/line (type=image)           [main.py]
+    → handle_image_message()                     [handlers.py]
+    → 重疊上傳檢查（asyncio.Lock）               [handlers.py]
+    → 每日用量檢查（每日 10 次上限）             [handlers.py]
+    → 立即回覆「請稍候」Flex Message             [handlers.py]
+    → 從 LINE 下載原始圖片，儲存至 images/
+    → score_essay_from_image(filepath, basename) [gemini.py]  呼叫 #1，單次完成 OCR + 評分 + 直存 output/{id}.html
+    → push_message 回傳評分結果（不佔用 reply_token）
+```
+
+V3 將 OCR、scoring、md_to_html 三者合併為**一次** Gemini 呼叫，由 `prompt/elementary_prompt_html_direct.txt` 直接讀圖輸出 HTML。此模式跳過 `ocr_image` 與 `is_english_essay`，非英文作文由模型依提示詞自行判斷並輸出「這不是一篇英文作文」的回退 HTML。適合追求最低延遲與 API 成本的路徑。
+
 ### 使用限制
 
 | 限制 | 說明 |
@@ -164,7 +181,7 @@ pip install -r requirements.txt
 
 **第一步：編輯 `settings.yaml`（公開）**
 
-此檔案已包含完整的公開設定（Flex 模板、提示詞、評分模式等）。`scoring_mode` 可切換 V1（3 次 API 呼叫）與 V2（2 次 API 呼叫）。`max_output_tokens` 控制 Gemini 輸出上限（預設 8192，建議 32768 確保 HTML 完整）。機密欄位已寫明 `請在 settings.local.yaml 中設定`。
+此檔案已包含完整的公開設定（Flex 模板、提示詞、評分模式等）。`scoring_mode` 可切換 V1（3 次 API 呼叫）、V2（2 次 API 呼叫）與 V3（1 次 API 呼叫）。`max_output_tokens` 控制 Gemini 輸出上限（預設 8192，建議 32768 確保 HTML 完整）。機密欄位已寫明 `請在 settings.local.yaml 中設定`。
 
 **第二步：建立 `settings.local.yaml`（機密）**
 
@@ -228,6 +245,10 @@ uvicorn main:app --port 9000
 
 ## 服務管理 (`menu.sh`)
 
+`menu.sh` 同時支援互動選單與 CLI 指令：
+
+**互動選單**（直接執行 `bash menu.sh`）：
+
 | 選項 | 功能 |
 |------|------|
 | 1) 啟動服務 | 以 `nohup` 背景執行 uvicorn，記錄 PID |
@@ -237,6 +258,19 @@ uvicorn main:app --port 9000
 | 5) 即時 Log | `tail -f` 即時追蹤 log（Ctrl+C 退出） |
 | 6) 清除 Log | 清空 `hook.log` 內容 |
 | 7) 離開 | 退出選單 |
+
+**CLI 指令**（script / cron 情境使用）：
+
+```bash
+bash menu.sh start      # 啟動服務
+bash menu.sh stop       # 停止服務
+bash menu.sh restart    # 重啟服務
+bash menu.sh status     # 顯示服務狀態
+bash menu.sh log        # 顯示最後 50 行 log
+bash menu.sh follow     # 即時 log（tail -f）
+bash menu.sh clean -y   # 清除 log（加 -y 跳過確認）
+bash menu.sh help       # 顯示用法
+```
 
 ---
 
