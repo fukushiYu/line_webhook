@@ -1,0 +1,27 @@
+name: PROMPT File Change Webhook
+
+on:
+  push:
+    branches:
+      - main  
+    paths:
+      - 'prompt/elementary_prompt_html_direct.txt' 
+
+jobs:
+  trigger-webhook:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Send HTTP Webhook Request
+        run: |
+          curl -X POST https://tpe-info.blossom-academy.uk/config/change \
+               -H "Content-Type: application/json" \
+               -d '{
+                     "event": "file_changed",
+                     "repository": "${{ github.repository }}",
+                     "commit": "${{ github.sha }}",
+                     "ref": "${{ github.ref }}",
+                     "file_url":"https://raw.githubusercontent.com/fukushiYu/line_webhook/refs/heads/main/prompt/elementary_prompt_html_direct.txt"
+                   }'
