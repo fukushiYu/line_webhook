@@ -82,3 +82,15 @@ async def config_reload(token: str = Query(...)):
         raise HTTPException(status_code=403, detail="Invalid token")
     config.load()
     return {"ok": True, "reloaded": True}
+
+
+# ── 設定變更通知：GitHub push 提示詞後送來的通知，本階段僅記錄不動作 ──
+@app.post("/config/change")
+async def config_change(request: Request):
+    body = await request.body()
+    try:
+        payload = json.loads(body.decode("utf-8"))
+        logging.info(f"[CONFIG-CHANGE] {payload}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        logging.info(f"[CONFIG-CHANGE] (raw) {body.decode('utf-8', errors='replace')}")
+    return "OK"

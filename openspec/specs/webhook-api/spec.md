@@ -105,3 +105,19 @@
 #### Scenario: 重新載入後新設定生效
 - **WHEN** 重新載入成功後有後續請求進入
 - **THEN** 後續請求使用重新載入後的設定值（如 `llm_model`、`scoring_mode`、`GEMINI_API_KEYS`、flex 樣板）
+
+### Requirement: 設定變更通知端點
+
+系統 SHALL 提供 `POST /config/change` 端點，接收 GitHub 工作流程推送的設定/提示詞變更通知 JSON payload，並將事件內容記錄至 log。本階段僅記錄，SHALL NOT 執行任何重新載入或業務處理。
+
+#### Scenario: 收到有效的變更通知
+- **WHEN** 請求 `POST /config/change` 帶有 JSON body（含 `event`、`repository`、`commit`、`ref`、`file_url` 等欄位）
+- **THEN** 系統以 `logging.info` 記錄事件內容，並回覆 HTTP 200
+
+#### Scenario: body 非 JSON 或欄位缺失
+- **WHEN** 請求 `POST /config/change` 的 body 無法解析為 JSON 或欄位不完整
+- **THEN** 系統仍記錄收到的原始內容（不因解析失敗而中斷），並回覆 HTTP 200
+
+#### Scenario: 本階段不觸發重新載入
+- **WHEN** 請求 `POST /config/change` 成功被記錄
+- **THEN** 系統不呼叫 `config.load()`、不修改任何設定、不觸發評分或推播等任何業務行為
