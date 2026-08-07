@@ -8,11 +8,15 @@
 
 ### Requirement: 載入公開設定
 
-系統 SHALL 於模組匯入時讀取 `settings.yaml`，解析為設定字典。
+系統 SHALL 於模組匯入時（經由呼叫 `load()`）讀取 `settings.yaml`，解析為設定字典；該讀取可於運行中再次執行。
 
 #### Scenario: settings.yaml 存在
 - **WHEN** 模組被匯入且 `settings.yaml` 存在
 - **THEN** 系統以 `yaml.safe_load` 解析該檔案並建構設定字典
+
+#### Scenario: 運行中重新讀取 settings.yaml
+- **WHEN** 系統於運行中重新執行載入程序且 `settings.yaml` 存在
+- **THEN** 系統以新內容取代既有設定值
 
 ### Requirement: 覆蓋機密設定
 
@@ -73,6 +77,38 @@
 #### Scenario: 未提供 logo_url
 - **WHEN** `settings.yaml` 未提供 `logo_url`
 - **THEN** 系統將 `LOGO_URL` 設為空字串，不產生錯誤
+
+### Requirement: 重新載入設定
+
+系統 SHALL 提供可重複執行的載入程序 `load()`，於每次被呼叫時重新讀取公開設定 `settings.yaml` 與機密設定 `settings.local.yaml`，並原地更新所有設定常數。
+
+#### Scenario: 模組匯入時自動載入
+- **WHEN** `config` 模組被匯入
+- **THEN** 系統自動呼叫 `load()` 一次，載入當下所有設定值
+
+#### Scenario: 呼叫 load() 重新載入
+- **WHEN** 系統於運行中呼叫 `load()`
+- **THEN** 系統重新讀取設定檔並以新值取代所有設定常數
+
+#### Scenario: 重新載入套用機密覆蓋
+- **WHEN** `load()` 被呼叫且 `settings.local.yaml` 存在
+- **THEN** 系統以機密設定重新覆蓋 `gemini_api_key`、`line` 清單對應索引與其他機密欄位
+
+#### Scenario: 重新載入期間既有請求不受影響
+- **WHEN** `load()` 執行期間有其他請求正在處理
+- **THEN** 系統不中斷、不重啟這些請求，僅更新後續讀取的設定值
+
+### Requirement: Reload Token 設定
+
+系統 SHALL 從設定讀取 `reload_token` 並匯出為 `RELOAD_TOKEN` 常數，供設定重新載入端點驗證使用；未提供時預設為空字串。
+
+#### Scenario: 機密設定提供 reload_token
+- **WHEN** `settings.local.yaml` 提供 `reload_token`
+- **THEN** 系統將其匯出為 `RELOAD_TOKEN` 常數
+
+#### Scenario: 未提供 reload_token
+- **WHEN** 設定中皆未提供 `reload_token`
+- **THEN** 系統將 `RELOAD_TOKEN` 設為空字串，不產生錯誤
 
 ### Requirement: V3 直出 HTML 提示詞載入
 

@@ -89,3 +89,19 @@
 #### Scenario: 應用啟動時設定 logger
 - **WHEN** 應用啟動且上述 logger 被初始化
 - **THEN** 每個 logger 以 `時間（%Y-%m-%d %H:%M:%S） 層級 訊息` 的格式輸出，層級設為 `INFO`
+
+### Requirement: 設定重新載入端點
+
+系統 SHALL 提供 `POST /config/reload` 端點，用於在服務運行中重新載入設定，無需重啟服務。端點 SHALL 以 `reload_token` 驗證請求來源。
+
+#### Scenario: 提供正確 token 重新載入
+- **WHEN** 請求 `POST /config/reload` 且 query 帶有與 `RELOAD_TOKEN` 相符的 token
+- **THEN** 系統重新載入所有設定並回覆成功狀態
+
+#### Scenario: token 錯誤或缺失
+- **WHEN** 請求 `POST /config/reload` 且 token 缺失或與 `RELOAD_TOKEN` 不符
+- **THEN** 系統回覆 HTTP 403，且不重新載入設定
+
+#### Scenario: 重新載入後新設定生效
+- **WHEN** 重新載入成功後有後續請求進入
+- **THEN** 後續請求使用重新載入後的設定值（如 `llm_model`、`scoring_mode`、`GEMINI_API_KEYS`、flex 樣板）

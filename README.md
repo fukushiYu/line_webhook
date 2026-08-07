@@ -24,7 +24,7 @@
 | **`handlers.py`** | **業務邏輯層**: 處理不同類型的訊息事件（文字、圖片、音訊），串接各工具模組。 |
 | **`gemini.py`** | **AI 服務層**: 封裝所有與 Google Gemini API 互動的邏輯（OCR、轉寫、評分、Markdown 轉 HTML）。 |
 | **`english_essay.py`** | **檢測層**: 提供 `is_english_essay()` 函式，對文字內容進行格式檢測（字數、句數、開頭大寫比例）。 |
-| **`config.py`** | **設定層**: 讀取 `settings.yaml` 及 `settings.local.yaml` 並合併，集中管理所有全域參數、API 金鑰與提示詞模板。支援 `!include path` 語法，可將提示詞模板抽離為獨立檔案。頻道專屬設定匯出為 `LINE_CONFIGS` 陣列。 |
+| **`config.py`** | **設定層**: 讀取 `settings.yaml` 及 `settings.local.yaml` 並合併，集中管理所有全域參數、API 金鑰與提示詞模板。支援 `!include path` 語法，可將提示詞模板抽離為獨立檔案。頻道專屬設定匯出為 `LINE_CONFIGS` 陣列。載入邏輯包裝為可重複執行的 `load()`，可在運行中重新讀取設定，不需重啟服務。 |
 | **`line_utils.py`** | **工具層**: 提供 LINE Messaging API 的認證配置 (`Configuration`) 及工具函式（簽章驗證）。 |
 
 ---
@@ -33,6 +33,7 @@
 
 | 功能 | 說明 |
 |------|------|
+| **設定熱更新** | 修改 `settings.yaml` 後呼叫 `POST /config/reload`（或 `bash menu.sh reload`）即可重新載入設定，無需重啟服務 |
 | **文字指令** | 回應 `grade` / `welcome` / `upload` / `menu` 等關鍵字，顯示對應的 Flex Message |
 | **圖片 OCR + 評分** | 上傳圖片 → 辨識英文作文 → Gemini 評分 → 輸出評分報告（支援 V1/V2/V3 三種模式） |
 | **語音轉寫** | 上傳語音訊息 → 透過 Gemini API 轉寫為文字 |
@@ -56,7 +57,7 @@ hook/
 ├── gemini.py              # Gemini API 呼叫封裝 (OCR / 轉寫 / 評分 / MD→HTML)
 ├── english_essay.py       # 英文作文檢測工具
 ├── style.css              # 評分報告樣式（由 /webhook/style.css 提供）
-├── menu.sh                # 服務管理腳本（啟動/停止/查看 Log，支援互動選單與 CLI 指令）
+├── menu.sh                # 服務管理腳本（啟動/停止/重載設定/查看 Log，支援互動選單與 CLI 指令）
 ├── settings.yaml          # 公開設定（Flex 模板、提示詞、模型名稱、評分模式、非機密參數，可上傳 GitHub）
 ├── prompt/                # 提示詞模板（從 settings.yaml 抽離，以 !include 載入）
 │   ├── elementary_prompt.txt
@@ -89,7 +90,7 @@ main.py             路由層         HTTP 請求分派、簽章驗證
   └── english_essay.py            英文作文檢測（回傳清洗後文字）
 ```
 
-- **config.py** — 一切設定的單一來源。匯出 `LINE_CONFIGS` 陣列（頻道專屬設定）、Flex Message 模板、Gemini 金鑰與提示詞
+- **config.py** — 一切設定的單一來源。匯出 `LINE_CONFIGS` 陣列（頻道專屬設定）、Flex Message 模板、Gemini 金鑰與提示詞。提供 `load()` 可於運行中重新載入設定（不重啟），其他模組一律以 `config.XXX` 動態取值
 - **line_utils.py** — 與 LINE Platform 的通訊基礎（簽章驗證、API Client），無全域 `Configuration` 實例，改由呼叫端傳入 `channel_config`
 - **gemini.py** — Gemini API 呼叫封裝：`ocr_image`、`transcribe_audio`、`score_essay`、`score_essay_direct_html`、`score_essay_from_image`、`md_to_html`
 - **handlers.py** — 各類事件的處理邏輯，所有函式接收 `channel_config: dict` 參數以支援多頻道
@@ -198,9 +199,11 @@ line:
     rich_menu_id: "richmenu-xxxxxxxxxxxxxx"
   # 第二個頻道（若有）
   # - channel_secret: "..."
+
+reload_token: "設定熱更新端點用的 secret token（POST /config/reload 驗證用）"
 ```
 
-`config.py` 啟動時會自動載入 `settings.yaml`，再以 `settings.local.yaml` 覆蓋機密欄位。
+`config.py` 啟動時會自動載入 `settings.yaml`，再以 `settings.local.yaml` 覆蓋機密欄位。運行中修改 `settings.yaml` 或 `settings.local.yaml` 後，呼叫 `POST /config/reload?token=<reload_token>`（或 `bash menu.sh reload`）即可熱更新，不需重啟。
 
 > 提示：初次部署可複製 `settings.local.yaml` 範本後填入真實值即可。`settings.yaml` 的機密欄位僅為說明字串，不會影響執行。
 
@@ -226,6 +229,7 @@ uvicorn main:app --port 9000
 | `/webhook/line/{channel_idx}` | `POST` | LINE Messaging API Webhook，`channel_idx` 對應 `settings.yaml` 中 `line` 陣列索引（需附 `X-Line-Signature`） |
 | `/webhook/scorepage` | `GET` | 回傳靜態評分頁（無 `liff.state` 時）或從 `liff.state` 解析 `id` 回傳對應 HTML 評分報告 |
 | `/webhook/style.css` | `GET` | 外部 CSS |
+| `/config/reload` | `POST` | 重新載入設定（不重啟），需帶 `?token=<reload_token>`（取自 `settings.local.yaml`） |
 | `/favicon.ico` | `GET` | 回傳 204 空回應（避免多餘 404 log） |
 
 ---
@@ -254,10 +258,11 @@ uvicorn main:app --port 9000
 | 1) 啟動服務 | 以 `nohup` 背景執行 uvicorn，記錄 PID |
 | 2) 停止服務 | 依 PID 結束 uvicorn 程序（等待 5 秒，必要時強制終止） |
 | 3) 重啟服務 | 依序執行停止 → 啟動 |
-| 4) 查看 Log | 顯示 `hook.log` 最後 50 行 |
-| 5) 即時 Log | `tail -f` 即時追蹤 log（Ctrl+C 退出） |
-| 6) 清除 Log | 清空 `hook.log` 內容 |
-| 7) 離開 | 退出選單 |
+| 4) 重新載入設定 | 呼叫 `POST /config/reload`（自動讀取 `reload_token`），不需重啟 |
+| 5) 查看 Log | 顯示 `hook.log` 最後 50 行 |
+| 6) 即時 Log | `tail -f` 即時追蹤 log（Ctrl+C 退出） |
+| 7) 清除 Log | 清空 `hook.log` 內容 |
+| 8) 離開 | 退出選單 |
 
 **CLI 指令**（script / cron 情境使用）：
 
@@ -265,6 +270,7 @@ uvicorn main:app --port 9000
 bash menu.sh start      # 啟動服務
 bash menu.sh stop       # 停止服務
 bash menu.sh restart    # 重啟服務
+bash menu.sh reload     # 重新載入設定（不重啟）
 bash menu.sh status     # 顯示服務狀態
 bash menu.sh log        # 顯示最後 50 行 log
 bash menu.sh follow     # 即時 log（tail -f）

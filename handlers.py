@@ -19,13 +19,7 @@ from linebot.v3.messaging import (
 )
 from linebot.v3.webhooks import MessageEvent, PostbackEvent
 
-from config import (
-    SCORING_MODE,
-    FLEX_WELCOME,
-    FLEX_UPLOAD,
-    FLEX_GRADE,
-    FLEX_WAIT,
-)
+import config
 from gemini import ocr_image, transcribe_audio, score_essay, score_essay_direct_html, score_essay_from_image, md_to_html
 from english_essay import is_english_essay
 
@@ -70,13 +64,13 @@ async def handle_message(event: MessageEvent, channel_config: dict):
         await line_bot_api.reply_message(ReplyMessageRequest(reply_token=reply_token, messages=[message]))
     # ── 指令分派 ──
     if lower_text == "grade":
-        flex_dict = FLEX_GRADE
+        flex_dict = config.FLEX_GRADE
         flex_dict["body"]["contents"][1]["action"]["uri"] = channel_config["liff_uri"]
         await _reply(event.reply_token,FlexMessage(alt_text="評分", contents=FlexContainer.from_dict(flex_dict)),)
     elif lower_text == "welcome":
-        await _reply(event.reply_token,FlexMessage(alt_text="歡迎", contents=FlexContainer.from_dict(FLEX_WELCOME)),)
+        await _reply(event.reply_token,FlexMessage(alt_text="歡迎", contents=FlexContainer.from_dict(config.FLEX_WELCOME)),)
     elif lower_text == "upload":
-        await _reply( event.reply_token,FlexMessage(alt_text="上傳", contents=FlexContainer.from_dict(FLEX_UPLOAD)),)
+        await _reply( event.reply_token,FlexMessage(alt_text="上傳", contents=FlexContainer.from_dict(config.FLEX_UPLOAD)),)
     elif lower_text in ("menu", "選單"):
         await line_bot_api.link_rich_menu_id_to_user(user_id=user_id, rich_menu_id=channel_config["rich_menu_id"])
         await _reply(event.reply_token, TextMessage(text="特殊圖文選單已為您開啟！"))
@@ -142,7 +136,7 @@ async def handle_image_message(event: MessageEvent, channel_config: dict):
         await line_bot_api.reply_message(
             ReplyMessageRequest(
                 reply_token=event.reply_token,
-                messages=[FlexMessage(alt_text="請稍候", contents=FlexContainer.from_dict(FLEX_WAIT))],
+                messages=[FlexMessage(alt_text="請稍候", contents=FlexContainer.from_dict(config.FLEX_WAIT))],
             )
         )
         blob_api = AsyncMessagingApiBlob(api_client)
@@ -154,13 +148,13 @@ async def handle_image_message(event: MessageEvent, channel_config: dict):
         with open(filepath, "wb") as f:
             f.write(content)
 
-        # ── 評分流程：依 SCORING_MODE 選擇 V1（3 次呼叫）、V2（2 次呼叫）或 V3（1 次呼叫） ──
+        # ── 評分流程：依 config.SCORING_MODE 選擇 V1（3 次呼叫）、V2（2 次呼叫）或 V3（1 次呼叫） ──
         # V1（原始流程）：score_essay → 存 .md → md_to_html → 存 .html
         # V2（最佳化流程）：score_essay_direct_html → 直存 .html（合併 scoring + HTML 轉換）
         # V3（單次呼叫）：score_essay_from_image → 圖片直接 OCR + 評分 + 直存 .html
         # V3 跳過 ocr_image 與 is_english_essay，非英文作文由模型依提示詞輸出固定回退 HTML。
         # 記錄每階段耗時，供效能比較。切換模式僅需修改 settings.yaml 的 scoring_mode。
-        if SCORING_MODE == "v3":
+        if config.SCORING_MODE == "v3":
             t0 = time.monotonic()
             await score_essay_from_image(filepath, basename)
             t1 = time.monotonic()
@@ -169,7 +163,7 @@ async def handle_image_message(event: MessageEvent, channel_config: dict):
             t_ocr = time.monotonic()
             text = await ocr_image(filepath)
             t_ocr_done = time.monotonic()
-            logging.info(f"[MODE] {SCORING_MODE.upper()} | ocr: {t_ocr_done-t_ocr:.3f}s")
+            logging.info(f"[MODE] {config.SCORING_MODE.upper()} | ocr: {t_ocr_done-t_ocr:.3f}s")
             ok, reason, cleaned = is_english_essay(text)
             if not ok:
                 await line_bot_api.push_message(
@@ -179,7 +173,7 @@ async def handle_image_message(event: MessageEvent, channel_config: dict):
                     )
                 )
                 return
-            if SCORING_MODE == "v1":
+            if config.SCORING_MODE == "v1":
                 t0 = time.monotonic()
                 await score_essay(cleaned, basename)
                 t1 = time.monotonic()
@@ -191,7 +185,7 @@ async def handle_image_message(event: MessageEvent, channel_config: dict):
                 await score_essay_direct_html(cleaned, basename)
                 t1 = time.monotonic()
                 logging.info(f"[MODE] V2 | score_essay_direct_html: {t1-t0:.3f}s")
-        flex_dict = FLEX_GRADE
+        flex_dict = config.FLEX_GRADE
         flex_dict["body"]["contents"][1]["action"]["uri"] = f"{channel_config['liff_uri']}?id={basename}"
         await line_bot_api.push_message(
             PushMessageRequest(

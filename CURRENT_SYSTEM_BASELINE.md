@@ -6,6 +6,8 @@
 > 對應原始碼：`main` 分支，commit `8a632b6`
 >
 > 目前啟用模式：V3 單次 Gemini 呼叫
+>
+> 2026-08-07 更新：新增設定熱更新 `POST /config/reload`（不重啟即套用 YAML 變更）
 
 ## 1. 系統目的
 
@@ -63,14 +65,14 @@ sequenceDiagram
 
 | 元件 | 目前責任 |
 |---|---|
-| `main.py` | 建立 FastAPI、接收 LINE Webhook、驗證頻道與簽章、分派事件、提供評分頁與 CSS。 |
+| `main.py` | 建立 FastAPI、接收 LINE Webhook、驗證頻道與簽章、分派事件、提供評分頁與 CSS，並提供 `POST /config/reload` 設定熱更新端點。 |
 | `handlers.py` | 處理文字、圖片、音訊與 Postback 事件；圖片 OCR、評分及 LINE 回覆的主要流程位於此處。 |
 | `gemini.py` | 封裝 Gemini REST API 呼叫，包含圖片 OCR、音訊轉寫、作文評分、直接產生 HTML、V3 的讀圖單次評分，以及 V1 的 Markdown 轉 HTML。 |
 | `english_essay.py` | 依字數、句數與句首大寫比例，初步判斷 OCR 結果是否為英文作文。 |
 | `line_utils.py` | 執行 LINE Webhook HMAC-SHA256 簽章驗證，以及建立 LINE Messaging API client。 |
-| `config.py` | 合併公開與機密設定、載入 Prompt，並匯出程式使用的設定常數。 |
+| `config.py` | 合併公開與機密設定、載入 Prompt，並匯出程式使用的設定常數。載入邏輯包裝為可重複執行的 `load()`，運行中呼叫即可熱更新（不重啟）；其他模組以 `config.XXX` 動態取值。 |
 | `settings.yaml` | 保存非機密設定，包括模型、評分模式、LIFF URI、Flex Message 與 Prompt 路徑。 |
-| `settings.local.yaml` | 保存 Gemini API Key、LINE Channel Secret、Access Token 等機密資料；不納入 Git。 |
+| `settings.local.yaml` | 保存 Gemini API Key、LINE Channel Secret、Access Token 及 `reload_token` 等機密資料；不納入 Git。 |
 | `prompt/` | 保存 OCR、評分與 HTML 輸出規格所使用的提示詞。 |
 | `images/` | 保存從 LINE 下載的作文圖片，檔名為 UUID。 |
 | `output/` | 保存評分結果；V2/V3 為 `.html`，V1 另有中間 `.md`。 |
@@ -103,6 +105,8 @@ FastAPI 先用該 Channel 的 Secret 驗證 `X-Line-Signature`，驗證通過後
 | Postback | `handle_postback()` | 直接 `await`，目前尚未實作行為 |
 
 圖片與音訊處理耗時較長，因此 Webhook 不等待 AI 工作完成，而是快速向 LINE 回傳 `OK`，避免 Webhook 長時間占用連線。
+
+另有管理端點 `POST /config/reload?token=<reload_token>`：驗證 token 後呼叫 `config.load()` 重新讀取全部設定，供運維在改完 YAML 後熱更新，不需重啟服務。
 
 ## 5. 圖片作文評分流程
 
@@ -259,6 +263,8 @@ settings.local.yaml 機密設定，不納入版本控制
 
 啟動時，`config.py` 先讀取 `settings.yaml`，再以 `settings.local.yaml` 中的 Gemini Key 與 LINE Channel 設定逐項覆蓋。大型 Prompt 使用字串形式的 `!include path` 載入。
 
+載入邏輯包裝為 `config.load()`，可在運行中重新執行。修改任一套設定後，呼叫 `POST /config/reload?token=<reload_token>`（或 `bash menu.sh reload`）即熱更新，不需重啟服務；熱更新只替換 `config` 模組的常數，不會重置 `handlers.py` 內的每日用量與處理中狀態。`reload_token` 存放於 `settings.local.yaml`（未提供時 `RELOAD_TOKEN` 為空字串，reload 端點將無法通過驗證）。
+
 重要設定包括：
 
 | 設定 | 用途 |
@@ -267,6 +273,7 @@ settings.local.yaml 機密設定，不納入版本控制
 | `scoring_mode` | 選擇 V1（3 次呼叫）、V2（2 次呼叫）或 V3（1 次呼叫）評分流程；目前設定為 `v3`。 |
 | `max_output_tokens` | 控制 Gemini 最大輸出，目前為 32768，避免 HTML 被截斷。 |
 | `logo_url` | 注入評分 HTML 的 Logo。 |
+| `reload_token` | 設定熱更新端點 `POST /config/reload` 的驗證 token（存放於 `settings.local.yaml`）。 |
 | `gemini_ocr_prompt` | OCR 行為規格（V1/V2 使用）。 |
 | `elementary_prompt` | V1 評分規格。 |
 | `elementary_html_prompt` | V2 評分及 HTML 輸出規格。 |

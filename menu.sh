@@ -104,6 +104,30 @@ restart_service() {
     start_service
 }
 
+reload_config() {
+    if ! is_running; then
+        echo -e "${YELLOW}⚠ 服務未在運行，無法重新載入設定${NC}"
+        return
+    fi
+    local token
+    token=$(sed -n "s/^[[:space:]]*reload_token:[[:space:]]*['\"]\?\([^'\"]*\)['\"]\?[[:space:]]*$/\1/p" "$HOOK_DIR/settings.local.yaml" | head -1)
+    if [ -z "$token" ]; then
+        echo -e "${RED}✗ 找不到 reload_token（請設定於 settings.local.yaml）${NC}"
+        return
+    fi
+    local resp code body
+    resp=$(curl -s -w "\n%{http_code}" -X POST "http://localhost:$HOOK_PORT/config/reload?token=$token")
+    code=$(echo "$resp" | tail -1)
+    body=$(echo "$resp" | head -n -1)
+    if [ "$code" = "200" ]; then
+        echo -e "${GREEN}✓ 設定已重新載入 (HTTP $code)${NC}"
+        [ -n "$body" ] && echo "  $body"
+    else
+        echo -e "${RED}✗ 設定重新載入失敗 (HTTP $code)${NC}"
+        [ -n "$body" ] && echo "  $body"
+    fi
+}
+
 show_log() {
     if [ ! -f "$LOG_FILE" ]; then
         echo -e "${YELLOW}⚠ Log 檔案不存在${NC}"
@@ -150,6 +174,7 @@ print_usage() {
     echo "  start     啟動服務"
     echo "  stop      停止服務"
     echo "  restart   重啟服務"
+    echo "  reload    重新載入設定（不重啟）"
     echo "  log       顯示最後 50 行 Log"
     echo "  follow    即時 Log (tail -f)"
     echo "  clean     清除 Log（加 -y 跳過確認，如: clean -y）"
@@ -164,6 +189,7 @@ case "$1" in
     start)   start_service ;;
     stop)    stop_service ;;
     restart) restart_service ;;
+    reload)  reload_config ;;
     log)     show_log ;;
     follow)  show_log_follow ;;
     clean)   clean_log "$2" ;;
@@ -188,22 +214,24 @@ while true; do
     echo "  1) 啟動服務"
     echo "  2) 停止服務"
     echo "  3) 重啟服務"
-    echo "  4) 查看 Log"
-    echo "  5) 即時 Log (tail -f)"
-    echo "  6) 清除 Log"
-    echo "  7) 離開"
+    echo "  4) 重新載入設定"
+    echo "  5) 查看 Log"
+    echo "  6) 即時 Log (tail -f)"
+    echo "  7) 清除 Log"
+    echo "  8) 離開"
     echo ""
-    read -r -p "  請選擇 [1-7]: " choice
+    read -r -p "  請選擇 [1-8]: " choice
 
     case $choice in
         1) start_service ;;
         2) stop_service  ;;
         3) restart_service ;;
-        4) show_log ;;
-        5) show_log_follow ;;
-        6) clean_log ;;
-        7) echo -e "\n  ${GREEN}再見！${NC}"; exit 0 ;;
-        *) echo -e "  ${RED}無效選項，請輸入 1-7${NC}" ;;
+        4) reload_config ;;
+        5) show_log ;;
+        6) show_log_follow ;;
+        7) clean_log ;;
+        8) echo -e "\n  ${GREEN}再見！${NC}"; exit 0 ;;
+        *) echo -e "  ${RED}無效選項，請輸入 1-8${NC}" ;;
     esac
     echo ""
     read -r -p "  按 Enter 繼續..." _

@@ -3,8 +3,9 @@
 ## Start / Dev
 
 - **Serve**: `uvicorn main:app --port 9000` (uses venv at repo root)
-- **Manage**: `bash menu.sh` (start/stop/restart/log via PID at `.hook.pid`)
-- **Config split**: `settings.yaml` (public, tracked) + `settings.local.yaml` (secrets, gitignored). `config.py` merges them at import time.
+- **Manage**: `bash menu.sh` (start/stop/restart/reload/log via PID at `.hook.pid`)
+- **Config split**: `settings.yaml` (public, tracked) + `settings.local.yaml` (secrets, gitignored). `config.py` merges them at import time and exposes `load()` for runtime reload without restart.
+- **Config reload**: after editing YAML, call `POST /config/reload?token=<reload_token>` or run `bash menu.sh reload` to re-read settings. `reload_token` lives in `settings.local.yaml`.
 - **Prompt files live in `prompt/`** and are loaded via `!include path` syntax in `settings.yaml`.
 
 ## Architecture

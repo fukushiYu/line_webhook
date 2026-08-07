@@ -12,40 +12,47 @@ def _resolve(value):
             return f.read()
     return value
 
-# ── 載入公開設定 ──
-with open("settings.yaml", "r", encoding="utf-8") as f:
-    conf = yaml.safe_load(f)
+# ── 載入全部設定並原地更新常數（可於運行中重複呼叫） ──
+def load():
+    # 載入公開設定
+    with open("settings.yaml", "r", encoding="utf-8") as f:
+        conf = yaml.safe_load(f)
 
-# ── 以機密設定（settings.local.yaml）覆蓋 API Key、Token 等 ──
-local_path = "settings.local.yaml"
-if os.path.exists(local_path):
-    with open(local_path, "r", encoding="utf-8") as f:
-        local_conf = yaml.safe_load(f)
-    if local_conf:
-        if "gemini_api_key" in local_conf:
-            conf["gemini_api_key"] = local_conf["gemini_api_key"]
-        if "line" in local_conf:
-            for i, entry in enumerate(local_conf["line"]):
-                if i < len(conf["line"]):
-                    conf["line"][i].update(entry)
+    # 以機密設定（settings.local.yaml）覆蓋 API Key、Token 等
+    local_path = "settings.local.yaml"
+    if os.path.exists(local_path):
+        with open(local_path, "r", encoding="utf-8") as f:
+            local_conf = yaml.safe_load(f)
+        if local_conf:
+            if "gemini_api_key" in local_conf:
+                conf["gemini_api_key"] = local_conf["gemini_api_key"]
+            if "line" in local_conf:
+                for i, entry in enumerate(local_conf["line"]):
+                    if i < len(conf["line"]):
+                        conf["line"][i].update(entry)
+            if "reload_token" in local_conf:
+                conf["reload_token"] = local_conf["reload_token"]
 
-# ── 以下為所有模組共用的設定常數 ──
+    # 以下為所有模組共用的設定常數
+    globals().update({
+        "LINE_CONFIGS": conf["line"],
+        "FLEX_WELCOME": conf["flex_welcome"],
+        "FLEX_UPLOAD": conf["flex_upload"],
+        "FLEX_GRADE": conf["flex_grade"],
+        "FLEX_WAIT": conf["flex_wait"],
+        "GEMINI_API_KEYS": conf["gemini_api_key"],
+        "LLM_MODEL": conf["llm_model"],
+        "SCORING_MODE": conf.get("scoring_mode", "v1"),
+        "MAX_OUTPUT_TOKENS": conf.get("max_output_tokens", 8192),
+        "GEMINI_OCR_PROMPT": conf["gemini_ocr_prompt"],
+        "GEMINI_AUDIO_PROMPT": conf["gemini_audio_prompt"],
+        "LOGO_URL": conf.get("logo_url", ""),
+        "ELEMENTARY_PROMPT": _resolve(conf["elementary_prompt"]),
+        "ELEMENTARY_HTML_PROMPT": _resolve(conf["elementary_html_prompt"]),
+        "ELEMENTARY_HTML_DIRECT_PROMPT": _resolve(conf["elementary_html_direct_prompt"]),
+        "MD_TO_HTML_PROMPT": _resolve(conf["MD_TO_HTML_PROMPT"]),
+        "RELOAD_TOKEN": conf.get("reload_token", ""),
+    })
 
-LINE_CONFIGS = conf["line"]
-
-FLEX_WELCOME = conf["flex_welcome"]
-FLEX_UPLOAD = conf["flex_upload"]
-FLEX_GRADE = conf["flex_grade"]
-FLEX_WAIT = conf["flex_wait"]
-
-GEMINI_API_KEYS = conf["gemini_api_key"]
-LLM_MODEL = conf["llm_model"]
-SCORING_MODE = conf.get("scoring_mode", "v1")
-MAX_OUTPUT_TOKENS = conf.get("max_output_tokens", 8192)
-GEMINI_OCR_PROMPT = conf["gemini_ocr_prompt"]
-GEMINI_AUDIO_PROMPT = conf["gemini_audio_prompt"]
-LOGO_URL = conf.get("logo_url", "")
-ELEMENTARY_PROMPT = _resolve(conf["elementary_prompt"])
-ELEMENTARY_HTML_PROMPT = _resolve(conf["elementary_html_prompt"])
-ELEMENTARY_HTML_DIRECT_PROMPT = _resolve(conf["elementary_html_direct_prompt"])
-MD_TO_HTML_PROMPT = _resolve(conf["MD_TO_HTML_PROMPT"])
+# ── 模組匯入時自動載入一次 ──
+load()

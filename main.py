@@ -2,7 +2,7 @@ import json,asyncio,os,logging
 from fastapi import FastAPI, Request, HTTPException, Header, Query
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from linebot.v3.webhooks import MessageEvent, PostbackEvent
-from config import LINE_CONFIGS
+import config
 from line_utils import verify_signature
 from handlers import handle_message, handle_image_message, handle_audio_message, handle_postback
 
@@ -31,10 +31,10 @@ async def favicon():
 async def webhook(channel_idx: int, request: Request, x_line_signature: str = Header(None)):
     if x_line_signature is None:
         raise HTTPException(status_code=400, detail="Missing Signature")
-    if channel_idx < 0 or channel_idx >= len(LINE_CONFIGS):
+    if channel_idx < 0 or channel_idx >= len(config.LINE_CONFIGS):
         raise HTTPException(status_code=400, detail="Invalid channel")
     body = await request.body()
-    channel_config = LINE_CONFIGS[channel_idx]
+    channel_config = config.LINE_CONFIGS[channel_idx]
     if not verify_signature(channel_config["channel_secret"], body, x_line_signature):
         raise HTTPException(status_code=400, detail="Invalid signature")
 
@@ -73,3 +73,12 @@ async def score_page(liff_state: str = Query(None, alias="liff.state")):
 @app.get("/webhook/style.css")
 async def serve_css():
     return FileResponse("style.css", media_type="text/css")
+
+
+# ── 重新載入設定：以 query token 驗證後呼叫 config.load()，無需重啟服務 ──
+@app.post("/config/reload")
+async def config_reload(token: str = Query(...)):
+    if token != config.RELOAD_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid token")
+    config.load()
+    return {"ok": True, "reloaded": True}
