@@ -23,7 +23,7 @@
 <body>
   <div class="container">
     <article class="content">
-      <h1>這不是一篇英文作文</h1>
+      <h1>這不是一篇英文作文。</h1>
       <div class="rv"><h3>無法評分</h3><p>圖片內容不是一篇可評分的英文作文，請上傳清楚的手寫或打字英文作文照片。</p></div>
     </article>
   </div>
